@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { mapResult, type DigestPeriod } from "@pna/core";
 import type {
   BuildDigestInput,
@@ -26,50 +25,65 @@ import {
 import { programDraftSchema, toProgramDraft, type ProgramPayload } from "../schemas/program.js";
 import { quizSchema, toQuizDraft } from "../schemas/quiz.js";
 import { discoverSourcesSchema, toSourceCandidates } from "../schemas/sources.js";
+import { sdkErrorMapper, structuralErrorMapper, type ErrorMapper } from "./errors.js";
 import { DEFAULT_MODEL } from "./models.js";
+import { loadAnthropicSdk } from "./sdk.js";
 import { runStructured, type MessagesClient } from "./structured.js";
 
 export interface AnthropicProviderConfig {
   readonly apiKey: string;
   readonly model?: string;
   /**
-   * Custom fetch. On Android the app passes Tauri's HTTP plugin here so the
-   * request leaves the WebView and is not subject to CORS.
+   * Custom fetch. Useful when the host wants requests to leave the WebView
+   * through a native transport instead of the browser stack.
    */
   readonly fetch?: typeof globalThis.fetch;
   readonly maxIterations?: number;
+  /**
+   * Allows the SDK to run inside a WebView. The app is local-first: the key
+   * belongs to the user and never leaves their device except to Anthropic, so
+   * there is no server to hide it behind.
+   */
+  readonly allowBrowser?: boolean;
 }
 
 /** How hard each kind of call should search. Longer windows warrant more digging. */
 const DIGEST_SEARCHES: Record<DigestPeriod, number> = { day: 8, week: 12, month: 16, year: 20 };
 
-export const createAnthropicClient = (config: AnthropicProviderConfig): Anthropic =>
-  new Anthropic({
-    apiKey: config.apiKey,
-    ...(config.fetch ? { fetch: config.fetch } : {}),
-  });
+interface Runtime {
+  readonly client: MessagesClient;
+  readonly mapError: ErrorMapper;
+}
 
-/**
- * The Claude-backed content provider.
- *
- * `client` is injected rather than constructed here so tests can drive the
- * whole provider without a network, and so the app can swap in a
- * Tauri-transported client on Android.
- */
-export const createAnthropicProviderWith = (
-  client: MessagesClient,
-  config: { readonly model?: string; readonly maxIterations?: number } = {},
-): ContentProvider => {
-  const runnerConfig = {
-    model: config.model ?? DEFAULT_MODEL,
-    ...(config.maxIterations === undefined ? {} : { maxIterations: config.maxIterations }),
+type RuntimeResolver = () => Promise<Runtime>;
+
+interface ProviderOptions {
+  readonly model?: string;
+  readonly maxIterations?: number;
+}
+
+const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): ContentProvider => {
+  const runner = async (): Promise<{
+    client: MessagesClient;
+    config: { model: string; maxIterations?: number; mapError: ErrorMapper };
+  }> => {
+    const { client, mapError } = await resolve();
+    return {
+      client,
+      config: {
+        model: options.model ?? DEFAULT_MODEL,
+        ...(options.maxIterations === undefined ? {} : { maxIterations: options.maxIterations }),
+        mapError,
+      },
+    };
   };
 
   return {
     id: "anthropic",
 
     async discoverSources(input: DiscoverSourcesInput) {
-      const result = await runStructured(client, runnerConfig, {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
         system: discoverSourcesSystem(),
         prompt: discoverSourcesPrompt(input),
         toolName: DISCOVER_SOURCES_TOOL,
@@ -84,7 +98,8 @@ export const createAnthropicProviderWith = (
     },
 
     async buildDigest(input: BuildDigestInput) {
-      const result = await runStructured(client, runnerConfig, {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
         system: digestSystem(input.period),
         prompt: digestPrompt(input),
         toolName: DIGEST_TOOL,
@@ -99,7 +114,8 @@ export const createAnthropicProviderWith = (
     },
 
     async draftProgram(input: DraftProgramInput) {
-      const result = await runStructured(client, runnerConfig, {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
         system: programSystem(input.continuation),
         prompt: programPrompt(input),
         toolName: PROGRAM_TOOL,
@@ -116,7 +132,8 @@ export const createAnthropicProviderWith = (
     },
 
     async writeLesson(input: WriteLessonInput) {
-      const result = await runStructured(client, runnerConfig, {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
         system: lessonSystem(),
         prompt: lessonPrompt(input),
         toolName: LESSON_TOOL,
@@ -133,14 +150,15 @@ export const createAnthropicProviderWith = (
     },
 
     async buildQuiz(input: BuildQuizInput) {
-      const result = await runStructured(client, runnerConfig, {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
         system: quizSystem(),
         prompt: quizPrompt(input),
         toolName: QUIZ_TOOL,
         toolDescription: "Report the self-check questions.",
         schema: quizSchema,
-        // The lecture is already in the prompt; searching again adds nothing.
         maxTokens: 8000,
+        // The lecture is already in the prompt; searching again adds nothing.
         maxSearches: 0,
         blockedDomains: [],
         effort: "medium",
@@ -150,8 +168,39 @@ export const createAnthropicProviderWith = (
   };
 };
 
-export const createAnthropicProvider = (config: AnthropicProviderConfig): ContentProvider =>
-  createAnthropicProviderWith(createAnthropicClient(config), {
+/**
+ * The Claude-backed content provider.
+ *
+ * The SDK is imported the first time a call is made, not at module load, so the
+ * app starts without it. Everything after that is ordinary SDK usage, including
+ * its typed error classes.
+ */
+export const createAnthropicProvider = (config: AnthropicProviderConfig): ContentProvider => {
+  let runtime: Promise<Runtime> | null = null;
+
+  const resolve: RuntimeResolver = () =>
+    (runtime ??= (async () => {
+      const sdk = await loadAnthropicSdk();
+      const client = new sdk.default({
+        apiKey: config.apiKey,
+        ...(config.fetch ? { fetch: config.fetch } : {}),
+        ...(config.allowBrowser ? { dangerouslyAllowBrowser: true } : {}),
+      });
+      return { client, mapError: sdkErrorMapper(sdk) };
+    })());
+
+  return buildProvider(resolve, {
     ...(config.model === undefined ? {} : { model: config.model }),
     ...(config.maxIterations === undefined ? {} : { maxIterations: config.maxIterations }),
   });
+};
+
+/**
+ * The same provider over a client supplied by the caller — how tests drive the
+ * whole thing without a network, and how a host can plug in its own transport.
+ */
+export const createAnthropicProviderWith = (
+  client: MessagesClient,
+  options: ProviderOptions = {},
+): ContentProvider =>
+  buildProvider(async () => ({ client, mapError: structuralErrorMapper }), options);

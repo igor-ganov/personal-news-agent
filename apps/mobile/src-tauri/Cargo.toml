@@ -1,0 +1,26 @@
+[package]
+name = "personal-news-agent"
+version = "0.1.0"
+description = "Личный агент: выжимки по источникам и программы обучения"
+authors = ["Igor Ganov"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+# Android and iOS load the app through this library; `main.rs` is the desktop entry point.
+name = "personal_news_agent_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+# The bundle ships to a phone, so optimise for size over compile time.
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

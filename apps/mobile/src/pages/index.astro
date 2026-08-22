@@ -1,0 +1,36 @@
+---
+// A single static page. Everything below is web components, so there is no
+// framework integration and no hydration step — the bundle is the app.
+---
+
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Личный агент по темам: выжимки по источникам и программы обучения" />
+    <title>Личный агент</title>
+  </head>
+  <body>
+    <div id="app">
+      <noscript>Приложению нужен JavaScript.</noscript>
+    </div>
+
+    <script>
+      import { start } from "../app/main.ts";
+
+      const mount = document.getElementById("app");
+      if (mount) {
+        start(mount).catch((error) => {
+          mount.textContent = `Не удалось запустить приложение: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+        });
+      }
+    </script>
+  </body>
+</html>

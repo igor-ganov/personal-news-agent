@@ -3,7 +3,7 @@ import { err, ok } from "@pna/core";
 import type { z } from "zod";
 import type { ProviderResult } from "../ports/content-provider.js";
 import { toolInputSchema } from "../schemas/json-schema.js";
-import { invalidOutput, refused, toProviderError } from "./errors.js";
+import { invalidOutput, refused, structuralErrorMapper, type ErrorMapper } from "./errors.js";
 import { webSearchTool } from "./models.js";
 
 /** The slice of the SDK this module uses — narrow enough to fake in tests. */
@@ -32,6 +32,8 @@ export interface StructuredRunnerConfig {
   readonly model: string;
   /** Safety net against a model that never calls the tool. */
   readonly maxIterations?: number;
+  /** Supplied by the provider once the SDK is loaded, so typed errors are used. */
+  readonly mapError?: ErrorMapper;
 }
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -65,6 +67,7 @@ export const runStructured = async <T>(
   call: StructuredCall<T>,
 ): Promise<ProviderResult<T>> => {
   const maxIterations = config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+  const mapError = config.mapError ?? structuralErrorMapper;
 
   const tools = [
     ...(call.maxSearches > 0
@@ -94,7 +97,7 @@ export const runStructured = async <T>(
         messages,
       });
     } catch (error) {
-      return err(toProviderError(error));
+      return err(mapError(error));
     }
 
     if (message.stop_reason === "refusal") {

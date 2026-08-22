@@ -1,0 +1,29 @@
+{
+  "name": "@pna/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host",
+    "build": "astro build",
+    "preview": "astro preview --host",
+    "typecheck": "tsc -p tsconfig.json",
+    "tauri": "tauri",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build --apk"
+  },
+  "dependencies": {
+    "@pna/agent": "workspace:*",
+    "@pna/app": "workspace:*",
+    "@pna/core": "workspace:*",
+    "@pna/storage": "workspace:*",
+    "@pna/ui": "workspace:*",
+    "lit": "^3.2.1",
+    "mermaid": "^11.4.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "astro": "^5.1.1"
+  }
+}

@@ -18,8 +18,10 @@ export * from "./schemas/lesson.js";
 export * from "./schemas/quiz.js";
 
 export * from "./anthropic/errors.js";
+export * from "./anthropic/sdk.js";
 export * from "./anthropic/models.js";
 export * from "./anthropic/structured.js";
 export * from "./anthropic/provider.js";
 
 export * from "./mock/provider.js";
+export * from "./delegating.js";
