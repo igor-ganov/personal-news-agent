@@ -116,8 +116,27 @@ pnpm android:build         # release APK под все ABI
 pnpm --filter @pna/mobile exec tauri android build --apk --target aarch64
 ```
 
+Gradle отдаёт APK **без подписи**, а неподписанный Android ставить откажется.
+Выравнивание и подпись — отдельным шагом:
+
+```bash
+scripts/sign-apk.sh
+```
+
+Ключ ищется в `~/.pna-android/pna-release.jks` (переопределяется через
+`PNA_KEYSTORE`, `PNA_KEYSTORE_PASS`, `PNA_KEY_ALIAS`) и намеренно живёт вне
+репозитория. Заведите свой — обновления придётся подписывать тем же ключом,
+иначе система не поставит их поверх установленного приложения:
+
+```bash
+keytool -genkeypair -v -keystore ~/.pna-android/pna-release.jks -alias pna \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
 Каталог `src-tauri/gen/android` не в репозитории: он целиком воспроизводится
 командой `tauri android init`.
+
+Собранный APK: `dev.ganov.pna`, minSdk 24, arm64-v8a, 7,3 МБ (со схемами).
 
 ## Размер бандла
 
