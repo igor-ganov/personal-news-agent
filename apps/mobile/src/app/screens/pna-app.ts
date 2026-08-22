@@ -1,6 +1,7 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
 import { routeHref, type Route } from "@pna/ui";
 import { currentRoute, goBack, navigate, onRouteChange } from "../router.js";
+import "./pna-account-screen.js";
 import "./pna-lesson-screen.js";
 import "./pna-program-screen.js";
 import "./pna-settings-screen.js";
@@ -76,6 +77,8 @@ export class PnaApp extends LitElement {
         return html`<pna-lesson-screen .lessonId=${this._route.lessonId}></pna-lesson-screen>`;
       case "settings":
         return html`<pna-settings-screen></pna-settings-screen>`;
+      case "account":
+        return html`<pna-account-screen></pna-account-screen>`;
     }
   }
 
@@ -88,7 +91,7 @@ export class PnaApp extends LitElement {
             </div>`
           : null}
         ${this.renderScreen()}
-        ${this._route.name === "settings"
+        ${this._route.name === "settings" || this._route.name === "account"
           ? null
           : html`<div class="fab">
               <ui-button

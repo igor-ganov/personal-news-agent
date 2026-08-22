@@ -9,7 +9,8 @@ export type Route =
   | { readonly name: "topic"; readonly topicId: TopicId; readonly tab: TopicTab }
   | { readonly name: "program"; readonly programId: ProgramId }
   | { readonly name: "lesson"; readonly lessonId: LessonId }
-  | { readonly name: "settings" };
+  | { readonly name: "settings" }
+  | { readonly name: "account" };
 
 export const HOME: Route = { name: "topics" };
 
@@ -50,6 +51,8 @@ export const parseRoute = (hash: string): Route => {
     }
     case "settings":
       return { name: "settings" };
+    case "account":
+      return { name: "account" };
     default:
       return HOME;
   }
@@ -67,6 +70,8 @@ export const routeHref = (route: Route): string => {
       return `#/l/${encodeURIComponent(route.lessonId)}`;
     case "settings":
       return "#/settings";
+    case "account":
+      return "#/account";
   }
 };
 

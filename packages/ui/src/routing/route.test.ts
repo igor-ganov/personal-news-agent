@@ -69,3 +69,10 @@ describe("sameRoute", () => {
     ).toBe(false);
   });
 });
+
+describe("маршрут аккаунта", () => {
+  it("разбирается и собирается обратно", () => {
+    expect(parseRoute("#/account")).toEqual({ name: "account" });
+    expect(routeHref({ name: "account" })).toBe("#/account");
+  });
+});

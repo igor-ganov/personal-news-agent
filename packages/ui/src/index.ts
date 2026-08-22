@@ -41,3 +41,6 @@ export * from "./skills/pna-lesson-view.js";
 export * from "./skills/pna-quiz-view.js";
 
 export * from "./settings/pna-settings-view.js";
+
+export * from "./account/pna-account-view.js";
+export * from "./account/pna-claim-choice.js";

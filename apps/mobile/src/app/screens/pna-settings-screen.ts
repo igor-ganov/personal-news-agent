@@ -1,9 +1,10 @@
 import { clearApiKey, patchSettings, saveApiKey } from "@pna/app";
 import type { Settings } from "@pna/core";
 import { maskSecret } from "@pna/storage";
+import { routeHref } from "@pna/ui";
 import { css, html } from "lit";
 import { ConnectedElement } from "../context.js";
-import { goBack } from "../router.js";
+import { goBack, navigate } from "../router.js";
 import "@pna/ui";
 
 /** Settings, plus the one thing the app cannot work without: the API key. */
@@ -26,6 +27,10 @@ export class PnaSettingsScreen extends ConnectedElement {
 
     main {
       padding: var(--pna-gap);
+    }
+
+    .account {
+      margin-top: var(--pna-gap-lg);
     }
 
     .note {
@@ -75,9 +80,16 @@ export class PnaSettingsScreen extends ConnectedElement {
           }}
         ></pna-settings-view>
 
+        <section class="account">
+          <ui-button @click=${() => navigate(routeHref({ name: "account" }))}
+            >Аккаунт и синхронизация</ui-button
+          >
+        </section>
+
         <p class="note">
           Все данные — темы, дайджесты, лекции и результаты тестов — хранятся на устройстве.
-          Наружу уходят только запросы к выбранной модели.
+          Наружу уходят только запросы к выбранной модели, а в аккаунт — то, что вы решите
+          синхронизировать.
         </p>
       </main>
     `;

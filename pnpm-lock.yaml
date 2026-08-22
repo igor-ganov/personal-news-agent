@@ -29,6 +29,9 @@ importers:
       '@pna/app':
         specifier: workspace:*
         version: link:../../packages/app
+      '@pna/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@pna/core':
         specifier: workspace:*
         version: link:../../packages/core

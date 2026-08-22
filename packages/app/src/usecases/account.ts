@@ -163,6 +163,14 @@ export const createAccountService = (deps: AccountDeps) => {
   return {
     current: (): AuthSession | null => session,
 
+    /** False on a device with no authenticator: the screen then explains why. */
+    isPasskeySupported: () => client.isPasskeySupported(),
+
+    /** The account and its registered keys, straight from the server. */
+    details: (token: string) => client.me(token),
+
+    removePasskey: (token: string, credentialId: string) => client.removePasskey(token, credentialId),
+
     /** Picks up a session saved on a previous run and loads that account's data. */
     async restore(): Promise<AuthSession | null> {
       const saved = await sessions.load();

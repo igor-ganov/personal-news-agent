@@ -1,3 +1,4 @@
+import { browserPasskeys, type PasskeyAgent } from "@pna/auth";
 import { browserStore, type KeyValueStore } from "@pna/storage";
 
 /**
@@ -26,3 +27,19 @@ export const secretStore = (): KeyValueStore => browserStore();
 export const openExternal = (url: string): void => {
   globalThis.open(url, "_blank", "noopener,noreferrer");
 };
+
+/**
+ * Where the API lives. Empty at build time means a device-only build: the app
+ * runs exactly as before, just without anywhere to sign in.
+ */
+export const apiBaseUrl = (): string => (import.meta.env.PUBLIC_PNA_API_URL ?? "").trim();
+
+/**
+ * Who answers a passkey prompt.
+ *
+ * The WebView's own WebAuthn implementation covers the browser. On Android the
+ * system Credential Manager is what holds passkeys, and reaching it needs a
+ * native plugin — until that lands, the WebView path is what runs, so the port
+ * exists precisely so swapping it changes nothing else.
+ */
+export const passkeyAgent = (): PasskeyAgent => browserPasskeys();

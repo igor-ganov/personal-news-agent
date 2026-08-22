@@ -314,6 +314,32 @@ describe("синхронизация", () => {
   });
 });
 
+describe("сведения об аккаунте", () => {
+  it("ключи запрашиваются у сервера", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+
+    const details = await s.service.details("tok");
+
+    expect(details.ok && details.value.account.email).toBe("reader@example.com");
+    expect(auth.calls()).toContain("me");
+  });
+
+  it("поддержку ключей выясняет платформа, а не сервис", async () => {
+    const s = setup();
+    expect(await s.service.isPasskeySupported()).toBe(true);
+  });
+
+  it("удаление ключа доходит до сервера", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+
+    await s.service.removePasskey("tok", "cred-1");
+
+    expect(auth.calls()).toContain("removePasskey");
+  });
+});
+
 describe("два аккаунта на одном устройстве", () => {
   it("не видят данных друг друга", async () => {
     const kv = memoryStore();
