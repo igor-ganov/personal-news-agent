@@ -37,6 +37,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: "auth",
+          root: "./packages/auth",
+          environment: "node",
+          include: ["src/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "api",
           root: "./services/api",
           environment: "node",

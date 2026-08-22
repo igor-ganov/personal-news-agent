@@ -1,179 +1,160 @@
 /**
  * The whole passkey flow against a running API — `wrangler dev` locally, or a
- * deployed Worker. Skipped unless PNA_API_URL is set, so the default test run
- * stays offline:
+ * deployed Worker — driven through the same client the app uses, with a
+ * software authenticator standing in for the phone's keystore. Skipped unless
+ * PNA_API_URL is set, so the default test run stays offline:
  *
  *   PNA_API_URL=http://127.0.0.1:8787 pnpm vitest run --project api
  */
 
+import { createAuthClient, createTransport } from "@pna/auth";
+import { virtualPasskeyAgent } from "@pna/auth/testing";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createVirtualAuthenticator } from "./virtual-authenticator.js";
 
 const BASE = process.env.PNA_API_URL?.replace(/\/$/, "");
 
-const call = async (
-  path: string,
-  init: RequestInit & { token?: string } = {},
-): Promise<{ status: number; json: any }> => {
+const raw = async (path: string, init: RequestInit & { token?: string } = {}) => {
   const { token, ...rest } = init;
   const response = await fetch(`${BASE}${path}`, {
     ...rest,
-    headers: {
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...rest.headers,
-    },
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...rest.headers },
   });
   return { status: response.status, json: await response.json().catch(() => null) };
 };
 
-const post = (path: string, body: unknown, token?: string) =>
-  call(path, { method: "POST", body: JSON.stringify(body), ...(token ? { token } : {}) });
-
 describe.skipIf(!BASE)("живой API", () => {
   const email = `probe-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.test`;
+  const transport = createTransport({ baseUrl: BASE ?? "" });
+  let client: ReturnType<typeof createAuthClient>;
+  let passkeys: ReturnType<typeof virtualPasskeyAgent>;
   let rpId = "";
-  let authenticator: ReturnType<typeof createVirtualAuthenticator>;
   let token = "";
 
   beforeAll(async () => {
-    const health = await call("/health");
+    const health = await raw("/health");
     expect(health.status).toBe(200);
     rpId = health.json.rpId;
-    authenticator = createVirtualAuthenticator({
+    passkeys = virtualPasskeyAgent({
       rpId,
       origin: process.env.PNA_API_ORIGIN ?? `https://${rpId}`,
     });
+    client = createAuthClient({ transport, passkeys });
   });
 
-  it("отвечает на /health", () => {
+  it("сообщает, каким доменом подписаны ключи", () => {
     expect(rpId).toBeTruthy();
   });
 
   it("регистрирует аккаунт по ключу", async () => {
-    const options = await post("/auth/register/options", { email });
-    expect(options.status).toBe(200);
-    expect(options.json.options.rp.id).toBe(rpId);
+    const session = await client.register({ email, label: "Виртуальный ключ" });
 
-    const attestation = await authenticator.create(options.json.options);
-    const verified = await post("/auth/register/verify", {
-      challengeId: options.json.challengeId,
-      label: "Виртуальный ключ",
-      response: attestation,
-    });
-
-    expect(verified.status).toBe(200);
-    expect(verified.json.account.email).toBe(email);
-    expect(verified.json.account.emailVerified).toBe(false);
-    expect(typeof verified.json.token).toBe("string");
-    token = verified.json.token;
+    expect(session.ok).toBe(true);
+    if (!session.ok) return;
+    expect(session.value.account.email).toBe(email);
+    expect(session.value.account.emailVerified).toBe(false);
+    expect(session.value.expiresAt > new Date().toISOString()).toBe(true);
+    token = session.value.token;
   });
 
   it("не даёт занять тот же адрес дважды", async () => {
-    const again = await post("/auth/register/options", { email });
-    expect(again.status).toBe(409);
-    expect(again.json.code).toBe("email_taken");
+    const again = await client.register({ email });
+    expect(again.ok === false && again.error.kind).toBe("email_taken");
   });
 
-  it("отклоняет непохожий на почту адрес", async () => {
-    const bad = await post("/auth/register/options", { email: "не почта" });
-    expect(bad.status).toBe(400);
-    expect(bad.json.code).toBe("bad_request");
+  it("отклоняет непохожий на почту адрес на самом сервере", async () => {
+    const response = await fetch(`${BASE}/auth/register/options`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "не почта" }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe("bad_request");
   });
 
   it("показывает аккаунт и его ключи по сессии", async () => {
-    const me = await call("/auth/me", { token });
-    expect(me.status).toBe(200);
-    expect(me.json.account.email).toBe(email);
-    expect(me.json.passkeys).toHaveLength(1);
-    expect(me.json.passkeys[0].label).toBe("Виртуальный ключ");
+    const me = await client.me(token);
+    expect(me.ok).toBe(true);
+    if (!me.ok) return;
+    expect(me.value.account.email).toBe(email);
+    expect(me.value.passkeys).toHaveLength(1);
+    expect(me.value.passkeys[0]?.label).toBe("Виртуальный ключ");
   });
 
   it("не отдаёт единственный ключ на удаление", async () => {
-    const me = await call("/auth/me", { token });
-    const removed = await call(`/auth/passkeys/${me.json.passkeys[0].credentialId}`, {
-      method: "DELETE",
-      token,
-    });
-    expect(removed.status).toBe(409);
-    expect(removed.json.code).toBe("last_passkey");
+    const me = await client.me(token);
+    if (!me.ok) throw new Error("нет сессии");
+
+    const removed = await client.removePasskey(token, me.value.passkeys[0]!.credentialId);
+
+    expect(removed.ok === false && removed.error.kind).toBe("conflict");
   });
 
   it("пускает по ключу без пароля", async () => {
-    const options = await post("/auth/login/options", { email });
-    expect(options.status).toBe(200);
-    expect(options.json.options.allowCredentials).toHaveLength(1);
+    const session = await client.login({ email });
 
-    const assertion = await authenticator.get(options.json.options);
-    const verified = await post("/auth/login/verify", {
-      challengeId: options.json.challengeId,
-      response: assertion,
-    });
-
-    expect(verified.status).toBe(200);
-    expect(verified.json.account.email).toBe(email);
-    token = verified.json.token;
+    expect(session.ok).toBe(true);
+    if (!session.ok) return;
+    expect(session.value.account.email).toBe(email);
+    token = session.value.token;
   });
 
   it("не принимает тот же challenge второй раз", async () => {
-    const options = await post("/auth/login/options", { email });
-    const assertion = await authenticator.get(options.json.options);
-    const first = await post("/auth/login/verify", {
-      challengeId: options.json.challengeId,
-      response: assertion,
-    });
-    expect(first.status).toBe(200);
+    const started = await transport.request<{ challengeId: string; options: { challenge: string } }>(
+      "/auth/login/options",
+      { method: "POST", body: { email } },
+    );
+    if (!started.ok) throw new Error(started.error.message);
 
-    const replay = await post("/auth/login/verify", {
-      challengeId: options.json.challengeId,
-      response: assertion,
-    });
-    expect(replay.status).toBe(400);
-    expect(replay.json.code).toBe("challenge_expired");
+    const assertion = await passkeys.get(started.value.options);
+    const body = { challengeId: started.value.challengeId, response: assertion };
+
+    const first = await transport.request<{ token: string }>("/auth/login/verify", { method: "POST", body });
+    expect(first.ok).toBe(true);
+    if (first.ok) token = first.value.token;
+
+    // Byte-identical repeat: the signature is still valid, so only the
+    // single-use challenge stands between a captured response and a session.
+    const replay = await transport.request("/auth/login/verify", { method: "POST", body });
+    expect(replay.ok === false && replay.error.kind).toBe("expired");
   });
 
   it("молчит о том, есть ли аккаунт с этим адресом", async () => {
-    const unknown = await post("/auth/login/options", { email: `нет-${email}` });
-    expect(unknown.status).toBe(200);
-    expect(unknown.json.options.challenge).toBeTruthy();
+    const unknown = await transport.request<{ options: { challenge: string } }>("/auth/login/options", {
+      method: "POST",
+      body: { email: `unknown-${email}` },
+    });
+    expect(unknown.ok && unknown.value.options.challenge.length > 0).toBe(true);
   });
 
   it("не пускает к состоянию без сессии", async () => {
-    expect((await call("/state")).status).toBe(401);
-    expect((await call("/state", { token: "definitely-not-a-token" })).status).toBe(401);
+    expect((await raw("/state")).status).toBe(401);
+    expect((await raw("/state", { token: "definitely-not-a-token" })).status).toBe(401);
   });
 
   it("хранит документ состояния и нумерует ревизии", async () => {
-    const written = await call("/state", {
-      method: "PUT",
-      token,
-      body: JSON.stringify({ revision: 0, body: { version: 2, topics: ["первая"] } }),
-    });
-    expect(written.status).toBe(200);
-    expect(written.json.revision).toBe(1);
+    const written = await client.push(token, 0, { version: 2, topics: ["первая"] });
+    expect(written.ok && written.value.kind).toBe("saved");
+    expect(written.ok && written.value.kind === "saved" && written.value.revision).toBe(1);
 
-    const read = await call("/state", { token });
-    expect(read.status).toBe(200);
-    expect(read.json.revision).toBe(1);
-    expect(read.json.body.topics).toEqual(["первая"]);
+    const read = await client.pull(token);
+    expect(read.ok && read.value.revision).toBe(1);
+    expect(read.ok && (read.value.body as { topics: string[] }).topics).toEqual(["первая"]);
   });
 
-  it("отклоняет запись поверх более новой ревизии", async () => {
-    const stale = await call("/state", {
-      method: "PUT",
-      token,
-      body: JSON.stringify({ revision: 0, body: { version: 2, topics: [] } }),
-    });
-    expect(stale.status).toBe(409);
+  it("запись поверх более новой ревизии возвращает актуальный документ", async () => {
+    const stale = await client.push(token, 0, { version: 2, topics: [] });
 
-    const unchanged = await call("/state", { token });
-    expect(unchanged.json.body.topics).toEqual(["первая"]);
+    expect(stale.ok && stale.value.kind).toBe("conflict");
+    expect(stale.ok && stale.value.kind === "conflict" && stale.value.remote.revision).toBe(1);
+    expect(
+      stale.ok && stale.value.kind === "conflict" && (stale.value.remote.body as { topics: string[] }).topics,
+    ).toEqual(["первая"]);
   });
 
   it("гасит сессию при выходе", async () => {
-    expect((await post("/auth/logout", {}, token)).status).toBe(200);
-    expect((await call("/state", { token })).status).toBe(401);
-    expect((await call("/auth/me", { token })).status).toBe(401);
+    expect((await client.logout(token)).ok).toBe(true);
+    expect((await client.pull(token)).ok === false).toBe(true);
+    expect((await client.me(token)).ok === false).toBe(true);
   });
 
   it("лишний слэш — это опечатка, а не другой ресурс", async () => {
@@ -182,7 +163,7 @@ describe.skipIf(!BASE)("живой API", () => {
   });
 
   it("отдаёт assetlinks для Android", async () => {
-    const links = await call("/.well-known/assetlinks.json");
+    const links = await raw("/.well-known/assetlinks.json");
     expect(links.status).toBe(200);
     expect(Array.isArray(links.json)).toBe(true);
   });

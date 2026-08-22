@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { p1363ToDer, toBase64Url } from "./bytes.js";
+import { p1363ToDer, toBase64Url } from "../bytes.js";
 import { encodeCbor } from "./cbor.js";
 
 const hex = (bytes: Uint8Array): string =>

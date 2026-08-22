@@ -7,7 +7,7 @@
  * Test-only: it performs no user verification of its own and stores nothing.
  */
 
-import { concatBytes, fromBase64Url, p1363ToDer, sha256, toBase64Url, uint32, utf8 } from "./bytes.js";
+import { concatBytes, fromBase64Url, p1363ToDer, sha256, toBase64Url, uint32, utf8 } from "../bytes.js";
 import { encodeCbor, type CborValue } from "./cbor.js";
 
 const ES256 = { name: "ECDSA", namedCurve: "P-256" } as const;

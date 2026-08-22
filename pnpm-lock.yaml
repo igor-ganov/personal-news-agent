@@ -76,6 +76,19 @@ importers:
         specifier: workspace:*
         version: link:../storage
 
+  packages/auth:
+    dependencies:
+      '@pna/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pna/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@simplewebauthn/server':
+        specifier: ^13.3.2
+        version: 13.3.2
+
   packages/core: {}
 
   packages/storage:
@@ -105,6 +118,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20250109.0
         version: 4.20260702.1
+      '@pna/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       wrangler:
         specifier: ^4.125.0
         version: 4.125.0(@cloudflare/workers-types@4.20260702.1)

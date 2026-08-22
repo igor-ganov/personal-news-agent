@@ -11,7 +11,7 @@ import {
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { beforeAll, describe, expect, it } from "vitest";
-import { fromBase64Url, utf8 } from "./bytes.js";
+import { fromBase64Url, utf8 } from "../bytes.js";
 import { createVirtualAuthenticator } from "./virtual-authenticator.js";
 
 const RP_ID = "pna-api.igor-ganov.workers.dev";
