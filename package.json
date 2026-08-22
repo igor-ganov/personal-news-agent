@@ -1,0 +1,26 @@
+{
+  "name": "personal-news-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b tsconfig.json",
+    "build": "pnpm --filter @pna/mobile build",
+    "dev": "pnpm --filter @pna/mobile dev",
+    "android:init": "pnpm --filter @pna/mobile android:init",
+    "android:dev": "pnpm --filter @pna/mobile android:dev",
+    "android:build": "pnpm --filter @pna/mobile android:build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "happy-dom": "^15.11.7",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,0 +1,65 @@
+import type { Digest, DigestPeriod } from "./digest.js";
+import type {
+  AttemptId,
+  DigestId,
+  LessonId,
+  ProgramId,
+  QuizId,
+  SourceId,
+  TopicId,
+} from "./ids.js";
+import type { QuizAttempt, Quiz } from "./quiz.js";
+import type { LessonContent, SkillProgram } from "./skill.js";
+import type { Source } from "./source.js";
+import type { Topic } from "./topic.js";
+
+/** Bumped whenever the persisted shape changes; see @pna/storage migrations. */
+export const STATE_VERSION = 1;
+
+export interface Settings {
+  /** Which content provider implementation is active. */
+  readonly providerId: string;
+  readonly model: string;
+  /** Auto-discovery keeps source lists fresh unless the user turned it off. */
+  readonly autoRefreshSources: boolean;
+  /** How stale a source list may get before discovery runs again. */
+  readonly sourceRefreshDays: number;
+  /** Periods for which digests are kept up to date in the background. */
+  readonly autoDigestPeriods: readonly DigestPeriod[];
+}
+
+export const defaultSettings = (): Settings => ({
+  providerId: "anthropic",
+  model: "claude-opus-5",
+  autoRefreshSources: true,
+  sourceRefreshDays: 7,
+  autoDigestPeriods: ["day", "week"],
+});
+
+/**
+ * The whole application state — a plain, serialisable structure.
+ * Every mutation goes through a pure reducer (see `state/reduce.ts`).
+ */
+export interface AppState {
+  readonly version: number;
+  readonly topics: Readonly<Record<TopicId, Topic>>;
+  readonly sources: Readonly<Record<SourceId, Source>>;
+  readonly digests: Readonly<Record<DigestId, Digest>>;
+  readonly programs: Readonly<Record<ProgramId, SkillProgram>>;
+  readonly lessonContent: Readonly<Record<LessonId, LessonContent>>;
+  readonly quizzes: Readonly<Record<QuizId, Quiz>>;
+  readonly attempts: Readonly<Record<AttemptId, QuizAttempt>>;
+  readonly settings: Settings;
+}
+
+export const emptyState = (): AppState => ({
+  version: STATE_VERSION,
+  topics: {},
+  sources: {},
+  digests: {},
+  programs: {},
+  lessonContent: {},
+  quizzes: {},
+  attempts: {},
+  settings: defaultSettings(),
+});

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.astro/
+*.tsbuildinfo
+coverage/
+
+# Tauri
+apps/mobile/src-tauri/target/
+apps/mobile/src-tauri/gen/
+
+# Local secrets / env
+.env
+.env.*
+!.env.example
