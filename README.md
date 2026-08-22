@@ -78,16 +78,46 @@ pnpm dev           # http://localhost:4321 — приложение в брау�
 
 ### Android
 
-Нужны Android SDK, NDK и переменные `ANDROID_HOME` / `NDK_HOME`, плюс цели Rust:
+Тулчейн, на котором собирается APK:
+
+| Компонент | Версия |
+| --- | --- |
+| JDK | 21 |
+| SDK Platform | android-34 |
+| Build-Tools | 34.0.0 |
+| NDK | 27.3.13750724 (r27d) |
+| Gradle | 8.14.3 (обёртка приходит вместе с `tauri android init`) |
+
+Установка с нуля:
 
 ```bash
+# SDK: cmdline-tools распаковываются в $ANDROID_HOME/cmdline-tools/latest
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-34" \
+           "build-tools;34.0.0" "ndk;27.3.13750724"
+
 rustup target add aarch64-linux-android armv7-linux-androideabi \
                   i686-linux-android x86_64-linux-android
+```
+
+Сборка:
+
+```bash
+. scripts/android-env.sh   # ANDROID_HOME / NDK_HOME / JAVA_HOME, с переопределением снаружи
 
 pnpm android:init          # один раз: создаёт apps/mobile/src-tauri/gen/android
 pnpm android:dev           # сборка и запуск на устройстве или эмуляторе
-pnpm android:build         # release APK
+pnpm android:build         # release APK под все ABI
 ```
+
+Для одной архитектуры — быстрее в разы:
+
+```bash
+pnpm --filter @pna/mobile exec tauri android build --apk --target aarch64
+```
+
+Каталог `src-tauri/gen/android` не в репозитории: он целиком воспроизводится
+командой `tauri android init`.
 
 ## Размер бандла
 
