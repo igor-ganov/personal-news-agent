@@ -1,5 +1,5 @@
 import type { ContentProvider } from "@pna/agent";
-import { latestDigest, type DigestDraft, type TopicId } from "@pna/core";
+import { digestsOfPeriod, latestDigest, type DigestDraft, type TopicId } from "@pna/core";
 import { describe, expect, it, vi } from "vitest";
 import { failingProvider, harness } from "../testing/harness.js";
 import { DIGEST_HISTORY, digestTaskKey, generateDigest } from "./digests.js";
@@ -103,6 +103,17 @@ describe("generateDigest", () => {
     const result = await generateDigest(ctx, { topicId, period: "day" });
     if (!result.ok) throw new Error("expected ok");
     expect(result.value.sourceIds).toEqual([source.value.id]);
+  });
+
+  it("adds to the history instead of replacing what is there", async () => {
+    const { ctx, state, topicId } = withTopic(digesting());
+    const first = await generateDigest(ctx, { topicId, period: "day" });
+    const second = await generateDigest(ctx, { topicId, period: "day" });
+    if (!first.ok || !second.ok) throw new Error("expected ok");
+
+    const history = digestsOfPeriod(state().digests, topicId, "day");
+    expect(history.map((d) => d.id)).toEqual([second.value.id, first.value.id]);
+    expect(history[1]!.sections).toHaveLength(1);
   });
 
   it("keeps only the most recent digests per period", async () => {

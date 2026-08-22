@@ -19,11 +19,18 @@ export const digestsOfTopic = (digests: DigestMap, topicId: TopicId): Digest[] =
     (d) => d.generatedAt,
   ).reverse();
 
+/** Every digest a topic has for one period, newest first — the history. */
+export const digestsOfPeriod = (
+  digests: DigestMap,
+  topicId: TopicId,
+  period: DigestPeriod,
+): Digest[] => digestsOfTopic(digests, topicId).filter((d) => d.period === period);
+
 export const latestDigest = (
   digests: DigestMap,
   topicId: TopicId,
   period: DigestPeriod,
-): Digest | undefined => digestsOfTopic(digests, topicId).find((d) => d.period === period);
+): Digest | undefined => digestsOfPeriod(digests, topicId, period)[0];
 
 export const isDigestStale = (digest: Digest, now: Instant): boolean =>
   toEpochMs(now) - toEpochMs(digest.generatedAt) >= STALE_AFTER_MS[digest.period];

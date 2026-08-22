@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatCount,
   formatDate,
+  formatDateTimeExact,
   formatMinutes,
   formatPercent,
   formatSessions,
@@ -21,6 +22,14 @@ describe("dates", () => {
 
   it("renders nothing for a missing date", () => {
     expect(formatDate(null)).toBe("");
+    expect(formatDateTimeExact(null)).toBe("");
+  });
+
+  it("keeps seconds so same-minute entries stay distinguishable", () => {
+    const a = formatDateTimeExact(instantOf("2026-08-22T18:22:05Z"));
+    const b = formatDateTimeExact(instantOf("2026-08-22T18:22:41Z"));
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/\d{2}:\d{2}:\d{2}/);
   });
 
   it("formats a window as a range", () => {

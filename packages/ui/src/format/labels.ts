@@ -75,11 +75,26 @@ const RU_DATE_TIME = new Intl.DateTimeFormat("ru-RU", {
   minute: "2-digit",
 });
 
+const RU_DATE_TIME_EXACT = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
 export const formatDate = (instant: Instant | string | null): string =>
   instant ? RU_DATE.format(new Date(instant)) : "";
 
 export const formatDateTime = (instant: Instant | string | null): string =>
   instant ? RU_DATE_TIME.format(new Date(instant)) : "";
+
+/**
+ * Down to the second — for lists where entries can legitimately land in the
+ * same minute, such as two digests asked for one after the other.
+ */
+export const formatDateTimeExact = (instant: Instant | string | null): string =>
+  instant ? RU_DATE_TIME_EXACT.format(new Date(instant)) : "";
 
 /** "21 авг 2026 — 22 авг 2026" */
 export const formatWindow = (from: Instant, to: Instant): string =>

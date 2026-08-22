@@ -35,6 +35,8 @@ export interface BootstrapOptions {
   readonly tasks?: TaskTracker;
   readonly saveDelayMs?: number;
   readonly onError?: (error: unknown) => void;
+  /** Reports a failed background write — a full quota must not pass unnoticed. */
+  readonly onSaveError?: (message: string) => void;
 }
 
 export interface Bootstrapped {
@@ -62,7 +64,11 @@ export const bootstrap = async (options: BootstrapOptions): Promise<Bootstrapped
   const loadWarning = loaded.ok ? null : loaded.error.message;
 
   const store = createStore(initial, options.onError);
-  const saver = debouncedSaver(repository, options.saveDelayMs ?? 500);
+  const saver = debouncedSaver(repository, options.saveDelayMs ?? 500, {
+    ...(options.onSaveError
+      ? { onError: (error) => options.onSaveError?.(error.message) }
+      : {}),
+  });
   store.subscribe((state) => saver.save(state));
 
   const context: AppContext = {

@@ -137,6 +137,32 @@ describe("debouncedSaver", () => {
     vi.useRealTimers();
   });
 
+  it("reports a failed background write instead of losing it silently", async () => {
+    vi.useFakeTimers();
+    const quota = new DOMException("full", "QuotaExceededError");
+    const repository = createStateRepository(failingStore(quota));
+    const errors: string[] = [];
+    const saver = debouncedSaver(repository, 100, { onError: (e) => errors.push(e.kind) });
+
+    saver.save(emptyState());
+    await vi.advanceTimersByTimeAsync(100);
+    expect(errors).toEqual(["quota"]);
+    vi.useRealTimers();
+  });
+
+  it("stays quiet while writes succeed", async () => {
+    vi.useFakeTimers();
+    const errors: string[] = [];
+    const saver = debouncedSaver(createStateRepository(memoryStore()), 100, {
+      onError: (e) => errors.push(e.kind),
+    });
+
+    saver.save(emptyState());
+    await vi.advanceTimersByTimeAsync(100);
+    expect(errors).toEqual([]);
+    vi.useRealTimers();
+  });
+
   it("does nothing when there is nothing pending", async () => {
     const repository = createStateRepository(memoryStore());
     const save = vi.spyOn(repository, "save");

@@ -6,6 +6,7 @@ import type { DigestMap } from "./select.js";
 import {
   digestItemCount,
   digestItems,
+  digestsOfPeriod,
   digestsOfTopic,
   isDigestStale,
   latestDigest,
@@ -31,6 +32,18 @@ const digests: DigestMap = Object.fromEntries(
 describe("digest selectors", () => {
   it("lists a topic's digests newest first", () => {
     expect(digestsOfTopic(digests, topic1).map((x) => x.id)).toEqual(["new-day", "week", "old-day"]);
+  });
+
+  it("returns the whole history of a period, newest first", () => {
+    expect(digestsOfPeriod(digests, topic1, "day").map((x) => x.id)).toEqual(["new-day", "old-day"]);
+  });
+
+  it("returns an empty history for a period that has nothing", () => {
+    expect(digestsOfPeriod(digests, topic1, "month")).toEqual([]);
+  });
+
+  it("keeps one topic's history out of another's", () => {
+    expect(digestsOfPeriod(digests, topic2, "day").map((x) => x.id)).toEqual(["other"]);
   });
 
   it("finds the latest digest for a period", () => {

@@ -16,8 +16,15 @@ import {
 import type { AppContext } from "../container.js";
 import { domainError, type AppError } from "../errors.js";
 
-/** How many digests to keep per topic and period before pruning. */
-export const DIGEST_HISTORY = 6;
+/**
+ * How many digests to keep per topic and period.
+ *
+ * A digest is content the user asked for and may want to re-read, so the
+ * history is kept rather than overwritten. The cap exists because the whole
+ * state is one serialised document: twenty per period is a long trail for a
+ * personal app while staying far away from the storage quota.
+ */
+export const DIGEST_HISTORY = 20;
 
 export const digestTaskKey = (topicId: TopicId, period: DigestPeriod): string =>
   `digest:${topicId}:${period}`;

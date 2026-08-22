@@ -55,6 +55,22 @@ export const createStateRepository = (
   };
 };
 
+export interface SaverOptions {
+  /**
+   * Called when a debounced write fails. Without it a full disk or an exhausted
+   * quota is silent: the app keeps running on state that is no longer being
+   * saved, and the user only finds out after a restart.
+   */
+  readonly onError?: (error: StorageError) => void;
+  readonly schedule?: (fn: () => void, ms: number) => unknown;
+  readonly cancel?: (handle: unknown) => void;
+}
+
+export interface Saver {
+  save(state: AppState): void;
+  flush(): Promise<Result<void, StorageError>>;
+}
+
 /**
  * Coalesces bursts of saves into one write.
  *
@@ -64,12 +80,11 @@ export const createStateRepository = (
 export const debouncedSaver = (
   repository: StateRepository,
   delayMs: number,
-  schedule: (fn: () => void, ms: number) => unknown = setTimeout,
-  cancel: (handle: unknown) => void = (handle) => clearTimeout(handle as never),
-): {
-  save(state: AppState): void;
-  flush(): Promise<Result<void, StorageError>>;
-} => {
+  options: SaverOptions = {},
+): Saver => {
+  const schedule = options.schedule ?? setTimeout;
+  const cancel = options.cancel ?? ((handle: unknown) => clearTimeout(handle as never));
+
   let handle: unknown = null;
   let pending: AppState | null = null;
 
@@ -81,7 +96,10 @@ export const debouncedSaver = (
       handle = null;
     }
     if (!state) return ok(undefined);
-    return repository.save(state);
+
+    const result = await repository.save(state);
+    if (!result.ok) options.onError?.(result.error);
+    return result;
   };
 
   return {

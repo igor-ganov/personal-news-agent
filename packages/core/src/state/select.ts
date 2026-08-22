@@ -5,7 +5,7 @@ import type { LessonContent, SkillProgram } from "../model/skill.js";
 import type { Source } from "../model/source.js";
 import type { AppState } from "../model/state.js";
 import type { TopicContext } from "../model/topic.js";
-import { latestDigest } from "../digests/select.js";
+import { digestsOfPeriod } from "../digests/select.js";
 import { countByStatus, sourcesOfTopic, type SourceCounts } from "../sources/select.js";
 import { programProgress, type Progress } from "../skills/progress.js";
 import { topicContextOf } from "../topics/context.js";
@@ -16,7 +16,14 @@ export interface TopicOverview {
   readonly context: TopicContext;
   readonly sources: readonly Source[];
   readonly sourceCounts: SourceCounts;
-  readonly digests: Readonly<Partial<Record<DigestPeriod, Digest>>>;
+  /**
+   * Every digest the topic has, per period, newest first.
+   *
+   * The whole history is handed over rather than just the newest one: a digest
+   * the user asked for is content they may want to come back to, so generating
+   * a fresh one must not make the previous one unreachable.
+   */
+  readonly digests: Readonly<Partial<Record<DigestPeriod, readonly Digest[]>>>;
   readonly programs: readonly ProgramSummary[];
 }
 
@@ -31,10 +38,10 @@ export const topicOverview = (state: AppState, topicId: TopicId): TopicOverview 
 
   const sources = sourcesOfTopic(state.sources, topicId);
   const digests = Object.fromEntries(
-    DIGEST_PERIODS.map((period) => [period, latestDigest(state.digests, topicId, period)]).filter(
-      ([, digest]) => digest !== undefined,
+    DIGEST_PERIODS.map((period) => [period, digestsOfPeriod(state.digests, topicId, period)]).filter(
+      ([, history]) => (history as Digest[]).length > 0,
     ),
-  ) as Partial<Record<DigestPeriod, Digest>>;
+  ) as Partial<Record<DigestPeriod, readonly Digest[]>>;
 
   return {
     context: context.value,
