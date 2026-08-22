@@ -1,0 +1,76 @@
+name: API
+
+# The Worker holds accounts and passkeys, so nothing reaches it untested:
+# the checks below must pass before deploy runs, and deploy runs only from
+# the default branch.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api.yml"
+      - "pnpm-lock.yaml"
+  pull_request:
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @pna/api typecheck
+      - name: Тесты API
+        run: pnpm vitest run --project api
+
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Migrations first: the new code may depend on tables the old schema
+      # lacks, and D1 migrations are additive.
+      - name: Миграции D1
+        working-directory: services/api
+        run: pnpm exec wrangler d1 migrations apply pna --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Публикация Worker
+        working-directory: services/api
+        run: pnpm exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # A deploy that answers 404 is worse than one that failed loudly.
+      - name: Проверка после публикации
+        run: |
+          for attempt in 1 2 3 4 5; do
+            body=$(curl -fsS https://pna-api.igor-ganov.workers.dev/health) && break
+            sleep 5
+          done
+          echo "$body"
+          echo "$body" | grep -q '"ok":true'

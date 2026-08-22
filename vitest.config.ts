@@ -37,6 +37,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: "api",
+          root: "./services/api",
+          environment: "node",
+          include: ["test/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "ui",
           root: "./packages/ui",
           environment: "happy-dom",

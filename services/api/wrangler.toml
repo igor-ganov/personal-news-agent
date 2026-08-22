@@ -1,0 +1,21 @@
+name = "pna-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-09"
+compatibility_flags = ["nodejs_compat"]
+
+# The Relying Party id passkeys are bound to. Changing it invalidates every
+# credential already registered, so treat it as permanent.
+[vars]
+RP_ID = "pna-api.igor-ganov.workers.dev"
+RP_NAME = "Личный агент"
+ALLOWED_ORIGINS = "https://pna-api.igor-ganov.workers.dev,http://localhost:4321,http://tauri.localhost"
+ANDROID_PACKAGE_NAME = "dev.ganov.pna"
+ANDROID_CERT_FINGERPRINTS = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pna"
+database_id = "774adde6-a754-468e-b1d3-ddf7d5f4f3fb"
+
+[triggers]
+crons = ["0 3 * * *"]

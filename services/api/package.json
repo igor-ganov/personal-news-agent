@@ -1,0 +1,21 @@
+{
+  "name": "@pna/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply pna --local",
+    "db:remote": "wrangler d1 migrations apply pna --remote"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
+    "hono": "^4.13.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "wrangler": "^4.125.0"
+  }
+}
