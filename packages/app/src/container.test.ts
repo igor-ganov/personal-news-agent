@@ -1,8 +1,16 @@
 import { createMockProvider } from "@pna/agent";
-import { emptyState, fixedClock, sequentialIds, type TopicId } from "@pna/core";
-import { createSecretStore, createStateRepository, memoryStore, STATE_KEY } from "@pna/storage";
+import { createSessionStore } from "@pna/auth";
+import { accountOwner, emptyState, fixedClock, sequentialIds, type TopicId } from "@pna/core";
+import {
+  createOwnedRepository,
+  createSecretStore,
+  createStateRepository,
+  memoryStore,
+  STATE_KEY,
+} from "@pna/storage";
 import { describe, expect, it, vi } from "vitest";
 import { bootstrap } from "./container.js";
+import { fakeAuthClient } from "./testing/fake-auth.js";
 import { T0 } from "./testing/harness.js";
 import { addTopic } from "./usecases/topics.js";
 import { hasApiKey, saveApiKey } from "./usecases/settings.js";
@@ -99,5 +107,45 @@ describe("bootstrap", () => {
       title: "ИИ",
       brief: "практика",
     });
+  });
+});
+
+describe("bootstrap с аккаунтом", () => {
+  it("без настроенного API приложение работает, просто без входа", async () => {
+    const { context } = await bootstrap({ ...options(), kv: memoryStore() });
+    expect(context.deps.account).toBeNull();
+  });
+
+  it("с настроенным API появляется сервис аккаунта", async () => {
+    const auth = fakeAuthClient();
+    const kv = memoryStore();
+    const { context } = await bootstrap({
+      ...options(),
+      kv,
+      auth: { client: auth.client, sessions: createSessionStore(kv, fixedClock(T0)) },
+    });
+
+    expect(context.deps.account).not.toBeNull();
+    expect(context.deps.account?.current()).toBeNull();
+  });
+
+  it("сохранённая сессия поднимает данные аккаунта при запуске", async () => {
+    const auth = fakeAuthClient();
+    const kv = memoryStore();
+    const sessions = createSessionStore(kv, fixedClock(T0));
+    await sessions.save(auth.session());
+
+    const owned = createOwnedRepository(kv);
+    const owner = accountOwner(auth.account.id);
+    await owned.of(owner).save({
+      ...emptyState(owner),
+      settings: { ...emptyState().settings, sourceRefreshDays: 11 },
+    });
+
+    const { context } = await bootstrap({ ...options(), kv, auth: { client: auth.client, sessions } });
+
+    expect(context.deps.account?.current()?.account.email).toBe("reader@example.com");
+    expect(context.store.getState().owner).toEqual(owner);
+    expect(context.store.getState().settings.sourceRefreshDays).toBe(11);
   });
 });

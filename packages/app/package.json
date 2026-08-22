@@ -14,6 +14,7 @@
   "dependencies": {
     "@pna/agent": "workspace:*",
     "@pna/core": "workspace:*",
-    "@pna/storage": "workspace:*"
+    "@pna/storage": "workspace:*",
+    "@pna/auth": "workspace:*"
   }
 }

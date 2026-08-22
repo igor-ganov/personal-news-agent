@@ -6,3 +6,4 @@ export * from "./adapters/web-storage.js";
 export * from "./codec.js";
 export * from "./repository.js";
 export * from "./secrets.js";
+export * from "./owned.js";

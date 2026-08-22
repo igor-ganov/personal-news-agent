@@ -65,6 +65,30 @@ const mergeRecords = <K extends string, V>(
   incoming: Readonly<Record<K, V>>,
 ): Record<K, V> => ({ ...base, ...incoming });
 
+/**
+ * Unions two states, letting `winner` decide anything both sides hold.
+ *
+ * Sound because every id is a UUID minted where the record was created: two
+ * sides can hold the same record, never two different records under one id. The
+ * direction is the caller's choice, and it is a real one — claiming data prefers
+ * what the account already has, while syncing prefers what this device just did.
+ *
+ * Settings are taken whole rather than merged field by field: half of one
+ * configuration and half of another is a configuration nobody chose.
+ */
+export const mergeStates = (base: AppState, winner: AppState): AppState => ({
+  version: STATE_VERSION,
+  owner: winner.owner,
+  topics: mergeRecords(base.topics, winner.topics),
+  sources: mergeRecords(base.sources, winner.sources),
+  digests: mergeRecords(base.digests, winner.digests),
+  programs: mergeRecords(base.programs, winner.programs),
+  lessonContent: mergeRecords(base.lessonContent, winner.lessonContent),
+  quizzes: mergeRecords(base.quizzes, winner.quizzes),
+  attempts: mergeRecords(base.attempts, winner.attempts),
+  settings: isEmptyState(winner) ? base.settings : winner.settings,
+});
+
 export interface ClaimInput {
   readonly local: AppState;
   readonly account: AppState;
@@ -98,18 +122,7 @@ export const claimState = (input: ClaimInput): AppState => {
     return { ...local, version: STATE_VERSION, owner };
   }
 
-  return {
-    version: STATE_VERSION,
-    owner,
-    topics: mergeRecords(local.topics, account.topics),
-    sources: mergeRecords(local.sources, account.sources),
-    digests: mergeRecords(local.digests, account.digests),
-    programs: mergeRecords(local.programs, account.programs),
-    lessonContent: mergeRecords(local.lessonContent, account.lessonContent),
-    quizzes: mergeRecords(local.quizzes, account.quizzes),
-    attempts: mergeRecords(local.attempts, account.attempts),
-    settings: isEmptyState(account) ? local.settings : account.settings,
-  };
+  return mergeStates(local, { ...account, owner });
 };
 
 /**

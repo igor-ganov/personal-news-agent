@@ -87,6 +87,18 @@ export const decodeState = (
     return err(storageError("corrupt", "Сохранённые данные не читаются как JSON"));
   }
 
+  return decodeStateValue(parsed, migrations);
+};
+
+/**
+ * The same rules applied to an already-parsed document — what a synced
+ * document arrives as, having come over the wire as JSON rather than out of
+ * local storage as a string.
+ */
+export const decodeStateValue = (
+  parsed: unknown,
+  migrations: Readonly<Record<number, Migration>> = MIGRATIONS,
+): Result<AppState, StorageError> => {
   if (!isRecord(parsed)) {
     return err(storageError("corrupt", "Сохранённые данные не являются объектом"));
   }

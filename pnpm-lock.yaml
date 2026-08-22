@@ -69,6 +69,9 @@ importers:
       '@pna/agent':
         specifier: workspace:*
         version: link:../agent
+      '@pna/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@pna/core':
         specifier: workspace:*
         version: link:../core

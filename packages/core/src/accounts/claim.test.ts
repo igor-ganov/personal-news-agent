@@ -7,6 +7,7 @@ import {
   claimState,
   clearedLocalState,
   isEmptyState,
+  mergeStates,
   stateCounts,
   summariseClaim,
 } from "./claim.js";
@@ -151,5 +152,53 @@ describe("clearedLocalState", () => {
   it("leaves settings alone so the app looks the same after signing out", () => {
     const local = withData({ settings: { ...emptyState().settings, model: "claude-sonnet-5" } });
     expect(clearedLocalState(local).settings.model).toBe("claude-sonnet-5");
+  });
+});
+
+describe("mergeStates", () => {
+  const base = withData();
+  const other: AppState = {
+    ...emptyState(),
+    topics: { ["t_other" as TopicId]: makeTopic({ id: "t_other" as TopicId, title: "Чужая" }) },
+  };
+
+  it("объединяет записи обеих сторон", () => {
+    const merged = mergeStates(base, other);
+    expect(Object.keys(merged.topics).sort()).toEqual(["t_local", "t_other"]);
+    expect(Object.keys(merged.sources)).toEqual(["s_local"]);
+  });
+
+  it("на совпадающих идентификаторах побеждает вторая сторона", () => {
+    const winner: AppState = {
+      ...emptyState(),
+      topics: { ["t_local" as TopicId]: makeTopic({ id: "t_local" as TopicId, title: "Новее" }) },
+    };
+    expect(mergeStates(base, winner).topics["t_local" as TopicId]?.title).toBe("Новее");
+  });
+
+  it("направление слияния меняет исход", () => {
+    const winner: AppState = {
+      ...emptyState(),
+      topics: { ["t_local" as TopicId]: makeTopic({ id: "t_local" as TopicId, title: "Новее" }) },
+    };
+    expect(mergeStates(winner, base).topics["t_local" as TopicId]?.title).toBe("Локальная");
+  });
+
+  it("владельца задаёт побеждающая сторона", () => {
+    const owned: AppState = { ...other, owner: { kind: "account", accountId: account } };
+    expect(mergeStates(base, owned).owner).toEqual({ kind: "account", accountId: account });
+  });
+
+  it("настройки берутся целиком у победителя, если ему есть что сказать", () => {
+    const winner: AppState = {
+      ...other,
+      settings: { ...emptyState().settings, model: "claude-sonnet-5" },
+    };
+    expect(mergeStates(base, winner).settings.model).toBe("claude-sonnet-5");
+  });
+
+  it("у пустой стороны настройки не заимствуются", () => {
+    const withModel = { ...base, settings: { ...base.settings, model: "claude-sonnet-5" } };
+    expect(mergeStates(withModel, emptyState()).settings.model).toBe("claude-sonnet-5");
   });
 });

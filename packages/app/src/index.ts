@@ -10,3 +10,4 @@ export * from "./usecases/sources.js";
 export * from "./usecases/digests.js";
 export * from "./usecases/skills.js";
 export * from "./usecases/settings.js";
+export * from "./usecases/account.js";

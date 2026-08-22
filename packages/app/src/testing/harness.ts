@@ -26,6 +26,7 @@ export const harness = (
       repository: createStateRepository(memoryStore()),
       secrets: createSecretStore(memoryStore()),
       tasks: createTaskTracker(),
+      account: null,
     },
   };
   return { ctx, state: () => store.getState() };
