@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Минимальный набор прав: приложению нужно только окно.",
+  "description": "Окно и ключи доступа — больше приложению ничего от системы не нужно.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "passkeys:default"]
 }

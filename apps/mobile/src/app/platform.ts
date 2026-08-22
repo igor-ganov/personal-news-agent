@@ -1,4 +1,5 @@
 import { browserPasskeys, type PasskeyAgent } from "@pna/auth";
+import { tauriPasskeys } from "./passkeys.js";
 import { browserStore, type KeyValueStore } from "@pna/storage";
 
 /**
@@ -37,9 +38,9 @@ export const apiBaseUrl = (): string => (import.meta.env.PUBLIC_PNA_API_URL ?? "
 /**
  * Who answers a passkey prompt.
  *
- * The WebView's own WebAuthn implementation covers the browser. On Android the
- * system Credential Manager is what holds passkeys, and reaching it needs a
- * native plugin — until that lands, the WebView path is what runs, so the port
- * exists precisely so swapping it changes nothing else.
+ * Android's WebView has no WebAuthn at all — passkeys there belong to the system
+ * credential manager, which only native code can reach, so the Tauri shell gets
+ * the native plugin. A plain browser uses its own implementation. Both sit
+ * behind the same port, and nothing above this line knows which one ran.
  */
-export const passkeyAgent = (): PasskeyAgent => browserPasskeys();
+export const passkeyAgent = (): PasskeyAgent => (isTauri() ? tauriPasskeys() : browserPasskeys());

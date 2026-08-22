@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="/home/user/personal-news-agent/apps/mobile/src-tauri/plugins/passkeys/android"
+    name=":tauri-plugin-passkeys"
+    type="LIBRARY"
+    maven="android:tauri-plugin-passkeys:unspecified"
+    agpVersion="8.11.0"
+    buildFolder="build"
+    bootClassPath="/opt/android-sdk/platforms/android-34/android.jar:/opt/android-sdk/build-tools/35.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="17"
+    compileTarget="android-34"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

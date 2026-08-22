@@ -1,0 +1,9 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+Позволяет приложению спрашивать системный менеджер учётных данных о ключах
+доступа. Сам ключ наружу не отдаётся: команды возвращают только подписанный
+ответ WebAuthn, который проверяет сервер.
+"""
+permissions = ["allow-is-available", "allow-create", "allow-get"]

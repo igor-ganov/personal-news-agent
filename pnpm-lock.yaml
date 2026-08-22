@@ -41,6 +41,9 @@ importers:
       '@pna/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@tauri-apps/api':
+        specifier: ^2.1.1
+        version: 2.11.1
       lit:
         specifier: ^3.2.1
         version: 3.3.3
@@ -1463,6 +1466,9 @@ packages:
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
+
+  '@tauri-apps/api@2.11.1':
+    resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
 
   '@tauri-apps/cli-darwin-arm64@2.11.4':
     resolution: {integrity: sha512-1ryOF3ZhpZ/nemHV5zVwBQBz9jDGKmKPvWPADOhc83ig0P4bMc2iER4NbC6r9sjeIZ6RVQ4g3RZIYvezhcl4TQ==}
@@ -4115,6 +4121,8 @@ snapshots:
   '@speed-highlight/core@1.2.24': {}
 
   '@stablelib/base64@1.0.1': {}
+
+  '@tauri-apps/api@2.11.1': {}
 
   '@tauri-apps/cli-darwin-arm64@2.11.4':
     optional: true

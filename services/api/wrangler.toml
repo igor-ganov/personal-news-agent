@@ -10,7 +10,9 @@ RP_ID = "pna-api.igor-ganov.workers.dev"
 RP_NAME = "Личный агент"
 ALLOWED_ORIGINS = "https://pna-api.igor-ganov.workers.dev,http://localhost:4321,http://tauri.localhost"
 ANDROID_PACKAGE_NAME = "dev.ganov.pna"
-ANDROID_CERT_FINGERPRINTS = ""
+# SHA-256 отпечаток ключа, которым подписан APK. Подпишете другим ключом —
+# Credential Manager перестанет узнавать приложение, и вход по ключу отвалится.
+ANDROID_CERT_FINGERPRINTS = "7A:26:19:0E:62:01:26:D8:DE:16:C8:DD:26:63:94:EC:1B:3F:68:AC:30:45:B1:08:8F:0C:46:DA:0A:C8:05:60"
 
 [[d1_databases]]
 binding = "DB"

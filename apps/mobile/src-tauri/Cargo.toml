@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-passkeys = { path = "plugins/passkeys" }
 
 [profile.release]
 # The bundle ships to a phone, so optimise for size over compile time.

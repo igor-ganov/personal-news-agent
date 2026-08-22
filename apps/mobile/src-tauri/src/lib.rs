@@ -1,11 +1,12 @@
 /// The shell around the web app.
 ///
-/// There are no custom commands on purpose: the whole application lives in the
-/// WebView and talks to the model over HTTPS directly, so the Rust side only
-/// has to create the window.
+/// The one thing the WebView cannot do for itself is passkeys: on Android they
+/// live in the system credential manager, which is reachable only from native
+/// code. Everything else still happens in the WebView.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_passkeys::init())
         .run(tauri::generate_context!())
         .expect("не удалось запустить приложение");
 }
