@@ -12,6 +12,9 @@ export * from "./model/digest.js";
 export * from "./model/skill.js";
 export * from "./model/quiz.js";
 export * from "./model/state.js";
+export * from "./model/account.js";
+
+export * from "./accounts/claim.js";
 
 export * from "./topics/tree.js";
 export * from "./topics/context.js";

@@ -1,9 +1,20 @@
-import { err, ok, type AppState, type Result } from "@pna/core";
+import { err, ok, ownerId, type AppState, type Owner, type Result } from "@pna/core";
 import { decodeState, encodeState, type Migration } from "./codec.js";
 import { asStorageError } from "./adapters/web-storage.js";
 import { storageError, type KeyValueStore, type StorageError } from "./ports/kv.js";
 
 export const STATE_KEY = "pna.state.v1";
+
+/**
+ * Where an owner's document lives.
+ *
+ * The local key is left at its original name so an app that predates accounts
+ * finds its data exactly where it left it; accounts get a suffixed key each.
+ * Two accounts on one device therefore never read each other's state, and
+ * signing out cannot expose what belonged to the account.
+ */
+export const stateKeyFor = (owner: Owner): string =>
+  owner.kind === "local" ? STATE_KEY : `${STATE_KEY}.${ownerId(owner)}`;
 
 export interface StateRepository {
   /** Returns `null` when nothing has been saved yet — a first run, not an error. */

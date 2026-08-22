@@ -1,3 +1,4 @@
+import { LOCAL_OWNER, type Owner } from "./account.js";
 import type { Digest, DigestPeriod } from "./digest.js";
 import type {
   AttemptId,
@@ -14,7 +15,7 @@ import type { Source } from "./source.js";
 import type { Topic } from "./topic.js";
 
 /** Bumped whenever the persisted shape changes; see @pna/storage migrations. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export interface Settings {
   /** Which content provider implementation is active. */
@@ -42,6 +43,12 @@ export const defaultSettings = (): Settings => ({
  */
 export interface AppState {
   readonly version: number;
+  /**
+   * Whose data this is. Everything below belongs to this owner, and the
+   * persisted document is stored under a key derived from it, so two accounts
+   * on one device never see each other's topics.
+   */
+  readonly owner: Owner;
   readonly topics: Readonly<Record<TopicId, Topic>>;
   readonly sources: Readonly<Record<SourceId, Source>>;
   readonly digests: Readonly<Record<DigestId, Digest>>;
@@ -52,8 +59,9 @@ export interface AppState {
   readonly settings: Settings;
 }
 
-export const emptyState = (): AppState => ({
+export const emptyState = (owner: Owner = LOCAL_OWNER): AppState => ({
   version: STATE_VERSION,
+  owner,
   topics: {},
   sources: {},
   digests: {},

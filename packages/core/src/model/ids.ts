@@ -10,6 +10,7 @@ export type LessonId = Branded<"Lesson">;
 export type QuizId = Branded<"Quiz">;
 export type AttemptId = Branded<"Attempt">;
 export type FocusId = Branded<"Focus">;
+export type AccountId = Branded<"Account">;
 
 /** Injected so every id-producing function stays pure and deterministic in tests. */
 export interface IdFactory {
@@ -41,3 +42,4 @@ export const lessonId = (raw: string): LessonId => raw as LessonId;
 export const quizId = (raw: string): QuizId => raw as QuizId;
 export const attemptId = (raw: string): AttemptId => raw as AttemptId;
 export const focusId = (raw: string): FocusId => raw as FocusId;
+export const accountId = (raw: string): AccountId => raw as AccountId;

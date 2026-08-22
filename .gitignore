@@ -12,3 +12,6 @@ apps/mobile/src-tauri/gen/
 .env
 .env.*
 !.env.example
+
+# Local credentials — never committed
+.secrets/
