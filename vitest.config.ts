@@ -21,6 +21,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: "app",
+          root: "./packages/app",
+          environment: "node",
+          include: ["src/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "storage",
           root: "./packages/storage",
           environment: "node",

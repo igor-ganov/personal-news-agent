@@ -33,7 +33,25 @@ importers:
         specifier: ^4.1.5
         version: 4.4.3
 
+  packages/app:
+    dependencies:
+      '@pna/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@pna/core':
+        specifier: workspace:*
+        version: link:../core
+      '@pna/storage':
+        specifier: workspace:*
+        version: link:../storage
+
   packages/core: {}
+
+  packages/storage:
+    dependencies:
+      '@pna/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 
