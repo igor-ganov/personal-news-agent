@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LessonId, ModuleId, TopicId } from "../model/ids.js";
+import type { LessonId, ModuleId } from "../model/ids.js";
 import type { LessonStatus, SkillProgram } from "../model/skill.js";
 import { makeLessonPlan, makeModule, makeProgram, T0 } from "../testing/builders.js";
 import type { CalendarDay } from "../time/instant.js";
