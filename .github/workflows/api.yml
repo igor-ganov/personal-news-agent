@@ -1,8 +1,8 @@
 name: API
 
-# The Worker holds accounts and passkeys, so nothing reaches it untested:
-# the checks below must pass before deploy runs, and deploy runs only from
-# the default branch.
+# В Worker живут аккаунты и ключи доступа, поэтому непроверенным туда не
+# попадает ничего: сначала проверки, потом публикация, и только с ветки по
+# умолчанию.
 on:
   push:
     paths:
@@ -51,9 +51,25 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Migrations first: the new code may depend on tables the old schema
-      # lacks, and D1 migrations are additive.
+      # Условие уровня job не видит секретов, поэтому наличие доступа
+      # выясняется шагом. Без токена прогон не падает: код проверен, а
+      # публиковать просто нечем — это настройка, а не поломка.
+      - name: Есть ли доступ к Cloudflare
+        id: guard
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Секрета CLOUDFLARE_API_TOKEN нет — публикация Worker пропущена"
+          fi
+
+      # Миграции идут первыми: новый код может опираться на таблицы, которых в
+      # старой схеме нет, а миграции D1 только добавляют.
       - name: Миграции D1
+        if: steps.guard.outputs.configured == 'true'
         working-directory: services/api
         run: pnpm exec wrangler d1 migrations apply pna --remote
         env:
@@ -61,14 +77,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Публикация Worker
+        if: steps.guard.outputs.configured == 'true'
         working-directory: services/api
         run: pnpm exec wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # A deploy that answers 404 is worse than one that failed loudly.
+      # Деплой, отвечающий 404, хуже упавшего с ошибкой.
       - name: Проверка после публикации
+        if: steps.guard.outputs.configured == 'true'
         run: |
           for attempt in 1 2 3 4 5; do
             body=$(curl -fsS https://pna-api.igor-ganov.workers.dev/health) && break

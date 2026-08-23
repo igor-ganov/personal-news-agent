@@ -205,25 +205,51 @@ pnpm dev                                        # http://localhost:8787
 
 ## Релизы
 
-`.github/workflows/android.yml` собирает APK, подписывает его и кладёт в релиз —
-по тегу `v*` или вручную через «Run workflow». Проект Gradle в репозитории не
-хранится, на чистом раннере он создаётся заново, SDK и NDK там уже есть.
+Готовый APK: [последний релиз](https://github.com/igor-ganov/personal-news-agent/releases/latest)
+или напрямую из ветки `dist`:
 
-Ключ подписи лежит в секретах, а не рождается на раннере: Android ставит
-обновление поверх установленного только если оно подписано тем же ключом.
-Потеряете ключ — пользователям придётся удалять приложение и ставить заново.
+```
+https://github.com/igor-ganov/personal-news-agent/raw/dist/personal-news-agent.apk
+```
 
-Секреты и переменные репозитория:
+Публикация устроена так, что ключ подписи в репозиторий не попадает. Репозиторий
+публичный, а ключ в публичном репозитории означал бы, что кто угодно соберёт APK,
+который Android примет как обновление установленного приложения.
 
-| Имя | Что это |
-| --- | --- |
-| `CLOUDFLARE_API_TOKEN` | секрет; права Workers Scripts Edit, D1 Edit, Workers Routes Edit |
-| `CLOUDFLARE_ACCOUNT_ID` | секрет; идентификатор аккаунта Cloudflare |
-| `ANDROID_KEYSTORE_BASE64` | секрет; `base64 -w0 ~/.pna-android/pna-release.jks` |
-| `ANDROID_KEYSTORE_PASSWORD` | секрет; пароль хранилища |
-| `ANDROID_KEY_ALIAS` | секрет; алиас ключа (`pna`) |
-| `PUBLIC_PNA_API_URL` | переменная; адрес API, зашиваемый в сборку |
-| `PUBLIC_PNA_DIAGRAMS` | переменная; `off`, чтобы выкинуть Mermaid из бандла |
+Поэтому подпись ставится вне CI, а в ветку `dist` кладётся уже подписанный APK.
+Пуш в неё запускает `publish-apk.yml`, который создаёт релиз встроенным
+`GITHUB_TOKEN` — секретов этот путь не требует вовсе. Перед публикацией он
+сверяет отпечаток подписи с тем, что отдаёт `assetlinks.json`, и предупреждает,
+если они разошлись: тогда вход по ключу на Android не сработает.
+
+Выложить новую сборку:
+
+```bash
+pnpm android:build && scripts/sign-apk.sh
+git worktree add --detach /tmp/dist && cd /tmp/dist && git checkout dist
+cp <путь-к-apk> personal-news-agent.apk
+echo v0.1.1 > VERSION && git rev-parse --short main > SOURCE_COMMIT
+git commit -am "dist: v0.1.1" && git push
+```
+
+`.github/workflows/android.yml` — отдельная история: он проверяет, что APK
+вообще собирается на чистой машине (проект Gradle в репозитории не хранится и
+создаётся заново), и кладёт результат в артефакты прогона. Подпишет и опубликует
+он только если в секретах окажется ключ — на публичном репозитории этого шага
+не будет.
+
+Секреты и переменные:
+
+| Имя | Нужен для | Обязателен |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | публикации Worker из Actions; права Workers Scripts Edit, D1 Edit, Workers Routes Edit | нет — без него `api.yml` только проверяет код |
+| `CLOUDFLARE_ACCOUNT_ID` | того же | нет |
+| `ANDROID_KEYSTORE_BASE64` | подписи APK внутри CI — только для приватного форка | нет |
+| `ANDROID_KEYSTORE_PASSWORD` | того же | нет |
+| `ANDROID_KEY_ALIAS` | того же | нет |
+
+Значения сборки (`PUBLIC_PNA_API_URL`, `PUBLIC_PNA_DIAGRAMS`) заданы прямо в
+`android.yml`: они не секретны, и в файле их видно вместе с остальным.
 
 ## Размер бандла
 

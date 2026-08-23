@@ -1,24 +1,20 @@
 name: Android
 
-# Собирает APK, подписывает его и кладёт в релиз.
+# Проверяет, что APK собирается на чистой машине, и — если в репозитории есть
+# ключ подписи — подписывает его и кладёт в релиз.
 #
-# Подпись — не деталь оформления: Android ставит обновление поверх только если
-# оно подписано тем же ключом. Поэтому ключ живёт в секретах репозитория, а не
-# рождается на раннере.
+# Ключа в этом репозитории нет и быть не может: он публичный, а ключ подписи в
+# публичном репозитории означает, что кто угодно соберёт APK, который Android
+# примет как обновление установленного приложения. Поэтому подпись здесь —
+# необязательный шаг: без секрета сборка остаётся артефактом прогона, а готовый
+# подписанный APK приезжает в ветку `dist` уже подписанным (см. `publish-apk`).
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Тег релиза (по умолчанию — версия приложения и номер сборки)"
-        required: false
-        type: string
-      prerelease:
-        description: "Пометить релиз как черновой"
-        required: false
-        default: true
-        type: boolean
+  schedule:
+    # Раз в неделю — чтобы поломка сборки нашлась раньше, чем она понадобится.
+    - cron: "0 4 * * 1"
 
 permissions:
   contents: write
@@ -26,6 +22,12 @@ permissions:
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  # Значения сборки заданы прямо здесь, а не переменными репозитория: их всего
+  # два, они не секретны, и так их видно вместе с остальной конфигурацией.
+  PUBLIC_PNA_API_URL: https://pna-api.igor-ganov.workers.dev
+  PUBLIC_PNA_DIAGRAMS: "off"
 
 jobs:
   apk:
@@ -60,9 +62,6 @@ jobs:
       - run: pnpm test
 
       - name: Сборка APK
-        env:
-          PUBLIC_PNA_API_URL: ${{ vars.PUBLIC_PNA_API_URL }}
-          PUBLIC_PNA_DIAGRAMS: ${{ vars.PUBLIC_PNA_DIAGRAMS }}
         # Раннеры ubuntu уже несут SDK и NDK — ставить их отдельно не нужно.
         # Проект Gradle в репозитории не хранится: он целиком воспроизводится
         # из конфигурации, поэтому на чистом раннере его сначала надо создать.
@@ -74,67 +73,42 @@ jobs:
       # Ключ приходит через окружение, а не через командную строку: аргументы
       # видны в списке процессов раннера, переменные окружения — нет.
       - name: Подпись
+        id: sign
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PNA_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           PNA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64 — подписать APK нечем"
-            exit 1
-          fi
           keystore="$RUNNER_TEMP/pna-release.jks"
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$keystore"
           trap 'rm -f "$keystore"' EXIT
           PNA_KEYSTORE="$keystore" scripts/sign-apk.sh
+          echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Имя релиза
-        id: naming
-        run: |
-          version="$(node -p "require('./apps/mobile/package.json').version")"
-          tag="${{ inputs.tag }}"
-          if [ -z "$tag" ]; then
-            case "$GITHUB_REF" in
-              refs/tags/*) tag="${GITHUB_REF#refs/tags/}" ;;
-              *) tag="v$version-build.$GITHUB_RUN_NUMBER" ;;
-            esac
-          fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Артефакт сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ github.sha }}
+          path: apps/mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Публикация релиза
+        if: ${{ steps.sign.outputs.signed == 'true' && startsWith(github.ref, 'refs/tags/') }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.naming.outputs.tag }}
+          TAG: ${{ github.ref_name }}
         run: |
           apk=apps/mobile/src-tauri/gen/android/app/build/outputs/apk/personal-news-agent.apk
-          size="$(du -h "$apk" | cut -f1)"
-          tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          fingerprint="$("$tools/apksigner" verify --print-certs "$apk" \
-            | grep -m1 'SHA-256 digest' | awk '{print $NF}')"
-
-          notes="$RUNNER_TEMP/notes.md"
-          cat > "$notes" <<MSG
-          Сборка из \`${GITHUB_SHA:0:7}\`.
-
-          | | |
-          | --- | --- |
-          | Пакет | \`dev.ganov.pna\` |
-          | Архитектура | arm64-v8a, minSdk 24 |
-          | Размер | $size |
-          | Отпечаток подписи | \`$fingerprint\` |
-
-          Отпечаток должен совпадать с тем, что отдаёт
-          [assetlinks.json](https://pna-api.igor-ganov.workers.dev/.well-known/assetlinks.json) —
-          иначе система не свяжет приложение с доменом и вход по ключу не сработает.
-          MSG
-
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$apk" --clobber
           else
-            gh release create "$TAG" "$apk" \
-              --title "Личный агент $TAG" \
-              --notes-file "$notes" \
-              ${{ inputs.prerelease && '--prerelease' || '' }}
+            gh release create "$TAG" "$apk" --title "Личный агент $TAG" --generate-notes
           fi
+
+      - name: Где взять подписанный APK
+        if: ${{ steps.sign.outputs.signed != 'true' }}
+        run: |
+          echo "::notice::Ключа подписи в секретах нет — APK остался неподписанным и лежит в артефактах прогона. Подписанная сборка публикуется через ветку dist."
