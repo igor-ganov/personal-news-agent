@@ -10,11 +10,12 @@ name: Android
 # подписанный APK приезжает в ветку `dist` уже подписанным (см. `publish-apk`).
 on:
   push:
+    # APK собирается на каждый пуш в основную ветку, а не только под релиз:
+    # поломка сборки должна находиться в тот же день, когда её внесли.
+    branches: [claude/learning-interests-app-lieg0m]
     tags: ["v*"]
+    paths-ignore: ["**/*.md"]
   workflow_dispatch:
-  schedule:
-    # Раз в неделю — чтобы поломка сборки нашлась раньше, чем она понадобится.
-    - cron: "0 4 * * 1"
 
 permissions:
   contents: write
@@ -95,18 +96,25 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Тег берётся из версии приложения, а не из имени ветки: релиз должен
+      # называться так же, как то, что внутри APK.
       - name: Публикация релиза
-        if: ${{ steps.sign.outputs.signed == 'true' && startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ steps.sign.outputs.signed == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           apk=apps/mobile/src-tauri/gen/android/app/build/outputs/apk/personal-news-agent.apk
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$apk" --clobber
+          case "$GITHUB_REF" in
+            refs/tags/*) tag="$GITHUB_REF_NAME" ;;
+            *) tag="v$(node -p "require('./apps/mobile/package.json').version")" ;;
+          esac
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --clobber
           else
-            gh release create "$TAG" "$apk" --title "Личный агент $TAG" --generate-notes
+            gh release create "$tag" "$apk" --title "Личный агент $tag" --generate-notes
           fi
+          gh release view "$tag" --json url --jq .url
 
       - name: Где взять подписанный APK
         if: ${{ steps.sign.outputs.signed != 'true' }}
