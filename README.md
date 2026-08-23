@@ -226,9 +226,11 @@ https://github.com/igor-ganov/personal-news-agent/raw/dist/personal-news-agent.a
 
 ```bash
 pnpm android:build && scripts/sign-apk.sh
-git worktree add --detach /tmp/dist && cd /tmp/dist && git checkout dist
-cp <путь-к-apk> personal-news-agent.apk
-echo v0.1.1 > VERSION && git rev-parse --short main > SOURCE_COMMIT
+apk=apps/mobile/src-tauri/gen/android/app/build/outputs/apk/personal-news-agent.apk
+commit=$(git rev-parse --short HEAD)
+
+git worktree add /tmp/dist dist && cp "$apk" /tmp/dist/
+cd /tmp/dist && echo v0.1.1 > VERSION && echo "$commit" > SOURCE_COMMIT
 git commit -am "dist: v0.1.1" && git push
 ```
 
