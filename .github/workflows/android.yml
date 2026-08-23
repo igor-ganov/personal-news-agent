@@ -33,6 +33,12 @@ env:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    # Секреты подставляются здесь, а не в условии шага: контекст `secrets` в
+    # `if` недоступен, и файл с такой ссылкой GitHub просто отказывается читать.
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      PNA_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      PNA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -75,11 +81,7 @@ jobs:
       # видны в списке процессов раннера, переменные окружения — нет.
       - name: Подпись
         id: sign
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          PNA_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          PNA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        if: env.KEYSTORE_BASE64 != ''
         run: |
           keystore="$RUNNER_TEMP/pna-release.jks"
           umask 077
@@ -99,7 +101,7 @@ jobs:
       # Тег берётся из версии приложения, а не из имени ветки: релиз должен
       # называться так же, как то, что внутри APK.
       - name: Публикация релиза
-        if: ${{ steps.sign.outputs.signed == 'true' }}
+        if: steps.sign.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -117,6 +119,6 @@ jobs:
           gh release view "$tag" --json url --jq .url
 
       - name: Где взять подписанный APK
-        if: ${{ steps.sign.outputs.signed != 'true' }}
+        if: steps.sign.outputs.signed != 'true'
         run: |
           echo "::notice::Ключа подписи в секретах нет — APK остался неподписанным и лежит в артефактах прогона. Подписанная сборка публикуется через ветку dist."
