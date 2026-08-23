@@ -1,0 +1,86 @@
+name: Publish APK
+
+# Выкладывает APK из этой ветки в релиз.
+#
+# Собирать и подписывать здесь нечего: APK приходит сюда уже подписанным, а
+# ключ подписи остаётся вне репозитория. Репозиторий публичный — ключ в нём
+# означал бы, что кто угодно может подписать APK, который Android примет как
+# обновление установленного приложения.
+#
+# Прав встроенного GITHUB_TOKEN на создание релиза достаточно, поэтому никаких
+# секретов workflow не требует.
+on:
+  push:
+    branches: [dist]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-apk
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Публикация релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          apk=personal-news-agent.apk
+          tag="$(cat VERSION)"
+          source_commit="$(cat SOURCE_COMMIT)"
+          size="$(du -h "$apk" | cut -f1)"
+
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          fingerprint="$("$tools/apksigner" verify --print-certs "$apk" \
+            | grep -m1 'SHA-256 digest' | awk '{print $NF}')"
+
+          # Отпечаток в assetlinks должен совпадать с тем, чем подписан APK:
+          # иначе система не свяжет приложение с доменом и вход по ключу
+          # доступа не сработает. Проверяем до публикации, а не после.
+          published="$(
+            curl -fsS https://pna-api.igor-ganov.workers.dev/.well-known/assetlinks.json \
+              | tr -d ' "' | grep -oiE '[0-9a-f]{2}(:[0-9a-f]{2}){31}' | head -1 \
+              | tr -d ':' | tr 'A-F' 'a-f'
+          )" || published=""
+
+          if [ "$published" != "$fingerprint" ]; then
+            echo "::warning::Отпечаток APK ($fingerprint) не совпадает с assetlinks ($published) — вход по ключу на Android работать не будет"
+            match="⚠️ не совпадает с assetlinks"
+          else
+            match="✅ совпадает с assetlinks"
+          fi
+
+          notes="$RUNNER_TEMP/notes.md"
+          cat > "$notes" <<MSG
+          Собрано из \`$source_commit\`, подписано вне CI.
+
+          | | |
+          | --- | --- |
+          | Пакет | \`dev.ganov.pna\` |
+          | Архитектура | arm64-v8a, minSdk 24 |
+          | Размер | $size |
+          | Отпечаток подписи | \`$fingerprint\` ($match) |
+
+          Установка: скачайте APK на телефон и разрешите установку из этого
+          источника. Обновления поверх встанут только если подписаны тем же
+          ключом.
+          MSG
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --clobber
+            gh release edit "$tag" --notes-file "$notes"
+          else
+            gh release create "$tag" "$apk" \
+              --title "Личный агент $tag" \
+              --notes-file "$notes"
+          fi
+
+          gh release view "$tag" --json url --jq .url
