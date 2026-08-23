@@ -202,8 +202,28 @@ pnpm dev                                        # http://localhost:8787
 
 Публикация идёт из GitHub Actions (`.github/workflows/api.yml`) при изменениях в
 `services/api` на ветке по умолчанию: проверки, миграции D1, деплой, health-check.
-Нужны два секрета репозитория — `CLOUDFLARE_API_TOKEN` (права: Workers Scripts
-Edit, D1 Edit, Workers Routes Edit) и `CLOUDFLARE_ACCOUNT_ID`.
+
+## Релизы
+
+`.github/workflows/android.yml` собирает APK, подписывает его и кладёт в релиз —
+по тегу `v*` или вручную через «Run workflow». Проект Gradle в репозитории не
+хранится, на чистом раннере он создаётся заново, SDK и NDK там уже есть.
+
+Ключ подписи лежит в секретах, а не рождается на раннере: Android ставит
+обновление поверх установленного только если оно подписано тем же ключом.
+Потеряете ключ — пользователям придётся удалять приложение и ставить заново.
+
+Секреты и переменные репозитория:
+
+| Имя | Что это |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | секрет; права Workers Scripts Edit, D1 Edit, Workers Routes Edit |
+| `CLOUDFLARE_ACCOUNT_ID` | секрет; идентификатор аккаунта Cloudflare |
+| `ANDROID_KEYSTORE_BASE64` | секрет; `base64 -w0 ~/.pna-android/pna-release.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | секрет; пароль хранилища |
+| `ANDROID_KEY_ALIAS` | секрет; алиас ключа (`pna`) |
+| `PUBLIC_PNA_API_URL` | переменная; адрес API, зашиваемый в сборку |
+| `PUBLIC_PNA_DIAGRAMS` | переменная; `off`, чтобы выкинуть Mermaid из бандла |
 
 ## Размер бандла
 
