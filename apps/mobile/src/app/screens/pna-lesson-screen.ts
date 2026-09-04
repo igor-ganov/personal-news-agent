@@ -5,7 +5,6 @@ import {
   markLesson,
   quizTaskKey,
   submitQuiz,
-  type AppError,
 } from "@pna/app";
 import {
   attemptsOfLesson,
@@ -58,20 +57,11 @@ export class PnaLessonScreen extends ConnectedElement {
     }
   }
 
-  private run(key: string, work: () => Promise<{ ok: boolean; error?: AppError }>): void {
-    void this.ctx.deps.tasks
-      .run(key, async () => {
-        const result = await work();
-        if (!result.ok) throw new Error(result.error?.message ?? "Не получилось");
-      })
-      .catch(() => {});
-  }
-
   private openQuiz(): void {
     this._showQuiz = true;
     this._result = null;
     if (!quizOfLesson(this.ctx.store.getState(), this.lessonId)) {
-      this.run(quizTaskKey(this.lessonId), () => generateQuiz(this.ctx, this.lessonId));
+      void generateQuiz(this.ctx, this.lessonId);
     }
   }
 
@@ -124,7 +114,7 @@ export class PnaLessonScreen extends ConnectedElement {
               .error=${this.taskError(quizTaskKey(this.lessonId))}
               @quiz-generate=${() => {
                 this._result = null;
-                this.run(quizTaskKey(this.lessonId), () => generateQuiz(this.ctx, this.lessonId));
+                void generateQuiz(this.ctx, this.lessonId);
               }}
               @quiz-submit=${(e: CustomEvent<Answers>) => {
                 this._result = submitQuiz(this.ctx, this.lessonId, e.detail);
@@ -139,10 +129,7 @@ export class PnaLessonScreen extends ConnectedElement {
               ?busy=${this.isBusy(lessonTaskKey(this.lessonId))}
               .error=${this.taskError(lessonTaskKey(this.lessonId))}
               ?hasQuiz=${quiz !== null || lastAttempt !== null}
-              @lesson-generate=${() =>
-                this.run(lessonTaskKey(this.lessonId), () =>
-                  generateLesson(this.ctx, this.lessonId),
-                )}
+              @lesson-generate=${() => void generateLesson(this.ctx, this.lessonId)}
               @lesson-status=${(e: CustomEvent<LessonStatus>) =>
                 markLesson(this.ctx, this.lessonId, e.detail)}
               @lesson-open=${(e: CustomEvent<LessonId>) =>

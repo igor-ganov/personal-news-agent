@@ -1,4 +1,4 @@
-import { clearApiKey, patchSettings, saveApiKey } from "@pna/app";
+import { clearApiKey, generatorCredentials, patchSettings, saveApiKey } from "@pna/app";
 import type { Settings } from "@pna/core";
 import { maskSecret } from "@pna/storage";
 import { routeHref } from "@pna/ui";
@@ -11,13 +11,17 @@ import "@pna/ui";
 export class PnaSettingsScreen extends ConnectedElement {
   static override properties = {
     _mask: { state: true },
+    _server: { state: true },
   };
 
   private declare _mask: string;
+  /** What the server can generate with: "" when there is no account to ask. */
+  private declare _server: string;
 
   constructor() {
     super();
     this._mask = "не задан";
+    this._server = "";
   }
 
   static override styles = css`
@@ -47,6 +51,30 @@ export class PnaSettingsScreen extends ConnectedElement {
 
   private async refreshMask(): Promise<void> {
     this._mask = maskSecret(await this.ctx.deps.secrets.get());
+    await this.refreshServer();
+  }
+
+  /**
+   * Whether the server holds a key of its own.
+   *
+   * This is what decides where generation happens: with a key on the server the
+   * work survives the app being closed, without one it can only run here.
+   */
+  private async refreshServer(): Promise<void> {
+    const credentials = await generatorCredentials(this.ctx);
+    if (!credentials.ok) {
+      this._server = "";
+      return;
+    }
+    if (!credentials.value) {
+      this._server = "";
+      return;
+    }
+    this._server = credentials.value.ownKey
+      ? "Ключ передан на сервер — генерация идёт там и не прерывается, если закрыть приложение."
+      : credentials.value.configured
+        ? "Сервер генерирует своим ключом."
+        : "На сервере ключа нет: сохраните ключ ещё раз, войдя в аккаунт, иначе генерация пойдёт только на этом устройстве.";
   }
 
   override render() {
@@ -62,6 +90,10 @@ export class PnaSettingsScreen extends ConnectedElement {
               tone="info"
               message="Ключ не задан — приложение работает на офлайн-заглушке: экраны и переходы живые, но материалы демонстрационные."
             ></ui-notice>`
+          : null}
+
+        ${this._server
+          ? html`<ui-notice tone="info" message=${this._server}></ui-notice>`
           : null}
 
         <pna-settings-view

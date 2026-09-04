@@ -6,12 +6,24 @@ import { toolInputSchema } from "../schemas/json-schema.js";
 import { invalidOutput, refused, structuralErrorMapper, type ErrorMapper } from "./errors.js";
 import { webSearchTool } from "./models.js";
 
-/** The slice of the SDK this module uses — narrow enough to fake in tests. */
+/** What a streamed generation gives back once it has finished. */
+export interface MessageStreamLike {
+  finalMessage(): Promise<Anthropic.Message>;
+}
+
+/**
+ * The slice of the SDK this module uses — narrow enough to fake in tests.
+ *
+ * Generation is streamed, never a plain `create`. A lecture or a program plan
+ * runs for minutes and asks for tens of thousands of output tokens; a single
+ * non-streaming request of that size sits on one open connection until an HTTP
+ * timeout kills it, which on a phone looks like the app hanging and then
+ * failing with an API error. Streaming keeps the connection alive and the SDK
+ * assembles the same final message.
+ */
 export interface MessagesClient {
   readonly messages: {
-    create(
-      params: Anthropic.MessageCreateParamsNonStreaming,
-    ): Promise<Anthropic.Message>;
+    stream(params: Anthropic.MessageStreamParams): MessageStreamLike;
   };
 }
 
@@ -79,14 +91,14 @@ export const runStructured = async <T>(
       strict: true,
       input_schema: toolInputSchema(call.schema) as Anthropic.Tool["input_schema"],
     },
-  ] as Anthropic.MessageCreateParamsNonStreaming["tools"];
+  ] as Anthropic.MessageStreamParams["tools"];
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: call.prompt }];
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
     let message: Anthropic.Message;
     try {
-      message = await client.messages.create({
+      message = await client.messages.stream({
         model: config.model,
         max_tokens: call.maxTokens,
         // The system prompt is stable per call kind, so it is the cacheable prefix.
@@ -95,7 +107,7 @@ export const runStructured = async <T>(
         output_config: { effort: call.effort },
         tools,
         messages,
-      });
+      }).finalMessage();
     } catch (error) {
       return err(mapError(error));
     }

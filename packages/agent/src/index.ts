@@ -24,4 +24,5 @@ export * from "./anthropic/structured.js";
 export * from "./anthropic/provider.js";
 
 export * from "./mock/provider.js";
+export * from "./jobs/contract.js";
 export * from "./delegating.js";

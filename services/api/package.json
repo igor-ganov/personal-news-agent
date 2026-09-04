@@ -11,6 +11,8 @@
     "db:remote": "wrangler d1 migrations apply pna --remote"
   },
   "dependencies": {
+    "@pna/agent": "workspace:*",
+    "@pna/core": "workspace:*",
     "@simplewebauthn/server": "^13.3.2",
     "hono": "^4.13.3"
   },

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTaskTracker, failTask } from "./tasks.js";
+import { createTaskTracker, failTask, type TaskState } from "./tasks.js";
+
+/** The half of the state these tests are about: status and message. */
+const summary = (state: TaskState) => ({ status: state.status, error: state.error });
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
@@ -13,7 +16,7 @@ const deferred = <T>() => {
 
 describe("createTaskTracker", () => {
   it("starts idle", () => {
-    expect(createTaskTracker().get("x")).toEqual({ status: "idle", error: null });
+    expect(summary(createTaskTracker().get("x"))).toEqual({ status: "idle", error: null });
   });
 
   it("tracks a task from running to done", async () => {
@@ -21,12 +24,12 @@ describe("createTaskTracker", () => {
     const gate = deferred<string>();
 
     const running = tracker.run("x", () => gate.promise);
-    expect(tracker.get("x")).toEqual({ status: "running", error: null });
+    expect(summary(tracker.get("x"))).toEqual({ status: "running", error: null });
     expect(tracker.isRunning("x")).toBe(true);
 
     gate.resolve("готово");
     expect(await running).toBe("готово");
-    expect(tracker.get("x")).toEqual({ status: "done", error: null });
+    expect(summary(tracker.get("x"))).toEqual({ status: "done", error: null });
   });
 
   it("records the failure message and rethrows", async () => {
@@ -36,7 +39,7 @@ describe("createTaskTracker", () => {
         throw new Error("нет сети");
       }),
     ).rejects.toThrow("нет сети");
-    expect(tracker.get("x")).toEqual({ status: "error", error: "нет сети" });
+    expect(summary(tracker.get("x"))).toEqual({ status: "error", error: "нет сети" });
   });
 
   it("shares one in-flight promise instead of starting the work twice", async () => {
@@ -77,7 +80,7 @@ describe("createTaskTracker", () => {
     const tracker = createTaskTracker();
     await tracker.run("x", async () => "ok");
     tracker.reset("x");
-    expect(tracker.get("x")).toEqual({ status: "idle", error: null });
+    expect(summary(tracker.get("x"))).toEqual({ status: "idle", error: null });
   });
 });
 
@@ -87,6 +90,6 @@ describe("failTask", () => {
     failTask(tracker, "x", "тема не найдена");
     await Promise.resolve();
     await Promise.resolve();
-    expect(tracker.get("x")).toEqual({ status: "error", error: "тема не найдена" });
+    expect(summary(tracker.get("x"))).toEqual({ status: "error", error: "тема не найдена" });
   });
 });

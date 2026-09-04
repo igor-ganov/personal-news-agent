@@ -81,6 +81,9 @@ export const startOfYear = (instant: Instant): Instant => {
 export const calendarDayOf = (instant: Instant): CalendarDay =>
   instant.slice(0, 10) as CalendarDay;
 
+/** Takes a `YYYY-MM-DD` string back into the domain — how a stored day is read. */
+export const calendarDay = (raw: string): CalendarDay => raw.slice(0, 10) as CalendarDay;
+
 export const dayStart = (day: CalendarDay): Instant => instantOf(`${day}T00:00:00.000Z`);
 
 /** Whole days between two instants, truncated toward zero. */

@@ -3,15 +3,14 @@ import {
   blacklistedHosts,
   editSource,
   err,
-  mergeDiscoveredSources,
   needsSourceRefresh,
   ok,
   setSourceStatus,
   sourcesOfTopic,
   topicContextOf,
-  type MergeOutcome,
   type Result,
   type Source,
+  type SourceCandidate,
   type SourceId,
   type SourceStatus,
   type TopicId,
@@ -19,12 +18,11 @@ import {
 } from "@pna/core";
 import type { AppContext } from "../container.js";
 import { domainError, type AppError } from "../errors.js";
+import { runGeneration, type Generation, type GenerationRequest } from "./jobs.js";
 
 export const DISCOVERY_LIMIT = 8;
 
 export const sourceTaskKey = (topicId: TopicId): string => `sources:${topicId}`;
-
-const EMPTY_OUTCOME: MergeOutcome = { sources: [], added: [], refreshed: [], rejected: [] };
 
 export interface RefreshOptions {
   /** Ignore the refresh interval — what the "обновить" button does. */
@@ -33,18 +31,17 @@ export interface RefreshOptions {
 }
 
 /**
- * Asks the provider what else this topic should be following and folds the
- * answer into the existing list.
+ * Describes the discovery run for a topic, or reports that none is due.
  *
  * The blacklist is enforced twice on purpose: the hosts go to the provider so
- * it does not waste a search on them, and `mergeDiscoveredSources` drops them
- * again if they come back anyway.
+ * it does not waste a search on them, and the merge that applies the answer
+ * drops them again if they come back anyway.
  */
-export const refreshTopicSources = async (
+export const sourcesRequest = (
   ctx: AppContext,
   topicId: TopicId,
   options: RefreshOptions = {},
-): Promise<Result<MergeOutcome, AppError>> => {
+): Result<GenerationRequest<"sources"> | null, AppError> => {
   const state = ctx.store.getState();
   const context = topicContextOf(state.topics, topicId);
   if (!context.ok) return err(domainError(context.error));
@@ -52,42 +49,44 @@ export const refreshTopicSources = async (
   const now = ctx.deps.clock.now();
   const existing = sourcesOfTopic(state.sources, topicId);
 
-  if (!options.force && !needsSourceRefresh(existing, now, state.settings.sourceRefreshDays)) {
-    return ok(EMPTY_OUTCOME);
-  }
+  if (!options.force && !needsSourceRefresh(existing, now, state.settings.sourceRefreshDays))
+    return ok(null);
 
-  const discovered = await ctx.deps.provider.discoverSources({
-    context: context.value,
-    known: existing.filter((s) => s.status !== "blacklisted"),
-    blockedHosts: blacklistedHosts(existing),
-    limit: options.limit ?? DISCOVERY_LIMIT,
-    now,
+  return ok({
+    key: sourceTaskKey(topicId),
+    kind: "sources",
+    input: {
+      context: context.value,
+      known: existing.filter((s) => s.status !== "blacklisted"),
+      blockedHosts: blacklistedHosts(existing),
+      limit: options.limit ?? DISCOVERY_LIMIT,
+      now,
+    },
+    meta: { topicId },
   });
-  if (!discovered.ok) return err(discovered.error);
+};
 
-  const outcome = mergeDiscoveredSources({
-    existing,
-    candidates: discovered.value,
-    topicId,
-    ids: ctx.deps.ids,
-    now,
-  });
+/** Nothing to do: the list is fresh enough, so no generation was started. */
+const SKIPPED: Generation<readonly SourceCandidate[]> = { kind: "ready", value: [] };
 
-  if (outcome.added.length > 0 || outcome.refreshed.length > 0) {
-    ctx.store.dispatch({
-      type: "sources/upsert-many",
-      sources: [...outcome.refreshed, ...outcome.added],
-    });
-  }
-  return ok(outcome);
+/** Asks what else this topic should be following and folds the answer in. */
+export const refreshTopicSources = async (
+  ctx: AppContext,
+  topicId: TopicId,
+  options: RefreshOptions = {},
+): Promise<Result<Generation<readonly SourceCandidate[]>, AppError>> => {
+  const request = sourcesRequest(ctx, topicId, options);
+  if (!request.ok) return request;
+  if (!request.value) return ok(SKIPPED);
+  return runGeneration(ctx, request.value);
 };
 
 /** Runs discovery only if the list has gone stale; used when a topic is opened. */
 export const ensureSourcesFresh = async (
   ctx: AppContext,
   topicId: TopicId,
-): Promise<Result<MergeOutcome, AppError>> => {
-  if (!ctx.store.getState().settings.autoRefreshSources) return ok(EMPTY_OUTCOME);
+): Promise<Result<Generation<readonly SourceCandidate[]>, AppError>> => {
+  if (!ctx.store.getState().settings.autoRefreshSources) return ok(SKIPPED);
   return refreshTopicSources(ctx, topicId);
 };
 

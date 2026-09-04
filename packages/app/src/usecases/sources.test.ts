@@ -1,7 +1,7 @@
 import type { ContentProvider } from "@pna/agent";
 import { instantOf, sourcesOfTopic, type SourceCandidate, type SourceId, type TopicId } from "@pna/core";
 import { describe, expect, it, vi } from "vitest";
-import { failingProvider, harness } from "../testing/harness.js";
+import { failingProvider, harness, produced } from "../testing/harness.js";
 import { addTopic } from "./topics.js";
 import {
   addSourceByHand,
@@ -49,7 +49,7 @@ describe("refreshTopicSources", () => {
     const result = await refreshTopicSources(ctx, topicId);
 
     if (!result.ok) throw new Error("expected ok");
-    expect(result.value.added).toHaveLength(1);
+    expect(produced(result.value)).toHaveLength(1);
     expect(sourcesOfTopic(state().sources, topicId)).toHaveLength(1);
   });
 
@@ -85,7 +85,9 @@ describe("refreshTopicSources", () => {
   });
 
   it("still refuses a blacklisted candidate the provider proposes anyway", async () => {
-    const { ctx, topicId } = withTopic(proposing([candidate({ url: "https://spam.example/feed" })]));
+    const { ctx, state, topicId } = withTopic(
+      proposing([candidate({ url: "https://spam.example/feed" })]),
+    );
 
     const added = addSourceByHand(ctx, topicId, { title: "Спам", url: "https://spam.example/feed" });
     if (!added.ok) throw new Error("expected ok");
@@ -93,8 +95,11 @@ describe("refreshTopicSources", () => {
 
     const result = await refreshTopicSources(ctx, topicId, { force: true });
     if (!result.ok) throw new Error("expected ok");
-    expect(result.value.added).toEqual([]);
-    expect(result.value.rejected.map((r) => r.reason)).toEqual(["blacklisted"]);
+    // The candidate came back and was dropped on the way in: the list still
+    // holds only the blacklisted source the user added by hand.
+    const sources = sourcesOfTopic(state().sources, topicId);
+    expect(sources).toHaveLength(1);
+    expect(sources[0]?.status).toBe("blacklisted");
   });
 
   it("skips the call when the list is still fresh, unless forced", async () => {

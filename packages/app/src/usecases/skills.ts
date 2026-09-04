@@ -7,7 +7,6 @@ import {
   ok,
   priorMaterialOf,
   programLessons,
-  quizId as toQuizId,
   quizOfLesson,
   recordAttempt,
   rescheduleProgram,
@@ -16,14 +15,14 @@ import {
   topicContextOf,
   type Answers,
   type ContinuationMode,
-  type LessonContent,
+  type LessonContentDraft,
   type LessonId,
   type PriorMaterial,
   type ProgramDraft,
   type ProgramId,
   type ProgramMap,
-  type Quiz,
   type QuizAttempt,
+  type QuizDraft,
   type Result,
   type Schedule,
   type SkillProgram,
@@ -31,6 +30,7 @@ import {
 } from "@pna/core";
 import type { AppContext } from "../container.js";
 import { domainError, type AppError } from "../errors.js";
+import { runGeneration, type Generation, type GenerationRequest } from "./jobs.js";
 
 export const lessonTaskKey = (id: LessonId): string => `lesson:${id}`;
 export const quizTaskKey = (id: LessonId): string => `quiz:${id}`;
@@ -82,30 +82,58 @@ export interface DraftProgramInputs {
 }
 
 /**
- * Produces a plan for the user to edit. Nothing is stored yet — the draft only
- * becomes a program once `commitProgram` is called, which is what makes
- * "модернизировать на момент создания" possible.
+ * Describes the plan to draft.
+ *
+ * The whole request travels with the job, schedule included: a plan that comes
+ * back tomorrow, or on another device, has to be editable and committable
+ * there, and nothing else remembers what was asked for.
  */
-export const draftProgram = async (
+export const programRequest = (
   ctx: AppContext,
   input: DraftProgramInputs,
-): Promise<Result<ProgramDraft, AppError>> => {
+): Result<GenerationRequest<"program">, AppError> => {
   const state = ctx.store.getState();
   const context = topicContextOf(state.topics, input.topicId);
   if (!context.ok) return err(domainError(context.error));
 
-  const drafted = await ctx.deps.provider.draftProgram({
-    context: context.value,
-    intent: input.intent,
-    weeks: input.schedule.intensity.weeks,
-    sessionsPerWeek: input.schedule.intensity.sessionsPerWeek,
-    minutesPerSession: input.schedule.intensity.minutesPerSession,
-    priorMaterial: priorMaterialForBases(state.programs, input.basedOn),
-    continuation: input.continuation,
-    now: ctx.deps.clock.now(),
+  return ok({
+    key: programTaskKey(input.topicId),
+    kind: "program",
+    input: {
+      context: context.value,
+      intent: input.intent,
+      weeks: input.schedule.intensity.weeks,
+      sessionsPerWeek: input.schedule.intensity.sessionsPerWeek,
+      minutesPerSession: input.schedule.intensity.minutesPerSession,
+      priorMaterial: priorMaterialForBases(state.programs, input.basedOn),
+      continuation: input.continuation,
+      now: ctx.deps.clock.now(),
+    },
+    meta: {
+      topicId: input.topicId,
+      intent: input.intent,
+      schedule: input.schedule,
+      basedOn: input.basedOn,
+      continuation: input.continuation,
+    },
   });
-  if (!drafted.ok) return err(drafted.error);
-  return ok(drafted.value);
+};
+
+/**
+ * Produces a plan for the user to edit. Nothing is stored yet — the draft only
+ * becomes a program once `commitProgram` is called, which is what makes
+ * "модернизировать на момент создания" possible.
+ *
+ * This is the one result that is never applied on arrival: a plan belongs to
+ * the user until they accept it, so it waits under its task key instead.
+ */
+export const draftProgram = async (
+  ctx: AppContext,
+  input: DraftProgramInputs,
+): Promise<Result<Generation<ProgramDraft>, AppError>> => {
+  const request = programRequest(ctx, input);
+  if (!request.ok) return request;
+  return runGeneration(ctx, request.value);
 };
 
 export interface CommitProgramInput {
@@ -161,15 +189,15 @@ export const deleteProgram = (ctx: AppContext, id: ProgramId): Result<ProgramId,
 };
 
 /**
- * Writes the lecture for one session.
+ * Describes the lecture to write.
  *
  * The provider is told what this program has already covered and what earlier
  * programs contain, so the lecture continues the thread instead of restarting it.
  */
-export const generateLesson = async (
+export const lessonRequest = (
   ctx: AppContext,
   lessonId: LessonId,
-): Promise<Result<LessonContent, AppError>> => {
+): Result<GenerationRequest<"lesson">, AppError> => {
   const state = ctx.store.getState();
   const program = findProgramOfLesson(state.programs, lessonId);
   if (!program) return err(domainError("unknown-lesson"));
@@ -186,34 +214,39 @@ export const generateLesson = async (
     .slice(0, ordered.findIndex((l) => l.id === lessonId))
     .map((l) => l.title);
 
-  const now = ctx.deps.clock.now();
-  const written = await ctx.deps.provider.writeLesson({
-    context: context.value,
-    programTitle: program.title,
-    programGoal: program.goal,
-    moduleTitle: module.title,
-    lesson,
-    coveredInProgram,
-    priorMaterial: priorMaterialOf(state.programs, program.id),
-    blockedHosts: blacklistedHosts(sourcesOfTopic(state.sources, program.topicId)),
-    now,
+  return ok({
+    key: lessonTaskKey(lessonId),
+    kind: "lesson",
+    input: {
+      context: context.value,
+      programTitle: program.title,
+      programGoal: program.goal,
+      moduleTitle: module.title,
+      lesson,
+      coveredInProgram,
+      priorMaterial: priorMaterialOf(state.programs, program.id),
+      blockedHosts: blacklistedHosts(sourcesOfTopic(state.sources, program.topicId)),
+      now: ctx.deps.clock.now(),
+    },
+    meta: { lessonId },
   });
-  if (!written.ok) return err(written.error);
-
-  const content: LessonContent = { ...written.value, lessonId, generatedAt: now };
-  ctx.store.dispatch({ type: "lessons/content", content });
-
-  const marked = setLessonStatus(program, lessonId, lesson.status === "done" ? "done" : "ready", now);
-  if (marked.ok) ctx.store.dispatch({ type: "programs/upsert", program: marked.value });
-
-  return ok(content);
 };
 
-/** Builds the self-check for a session. The lecture has to exist first. */
-export const generateQuiz = async (
+/** Writes the lecture for one session and files it against the lesson. */
+export const generateLesson = async (
   ctx: AppContext,
   lessonId: LessonId,
-): Promise<Result<Quiz, AppError>> => {
+): Promise<Result<Generation<LessonContentDraft>, AppError>> => {
+  const request = lessonRequest(ctx, lessonId);
+  if (!request.ok) return request;
+  return runGeneration(ctx, request.value);
+};
+
+/** Describes the self-check for a session. The lecture has to exist first. */
+export const quizRequest = (
+  ctx: AppContext,
+  lessonId: LessonId,
+): Result<GenerationRequest<"quiz">, AppError> => {
   const state = ctx.store.getState();
   const program = findProgramOfLesson(state.programs, lessonId);
   const lesson = program && programLessons(program).find((l) => l.id === lessonId);
@@ -225,24 +258,28 @@ export const generateQuiz = async (
   const context = topicContextOf(state.topics, program.topicId);
   if (!context.ok) return err(domainError(context.error));
 
-  const built = await ctx.deps.provider.buildQuiz({
-    context: context.value,
-    lesson,
-    lessonBody: content.body,
-    keyPoints: content.keyPoints,
-    questionCount: DEFAULT_QUESTION_COUNT,
-    now: ctx.deps.clock.now(),
+  return ok({
+    key: quizTaskKey(lessonId),
+    kind: "quiz",
+    input: {
+      context: context.value,
+      lesson,
+      lessonBody: content.body,
+      keyPoints: content.keyPoints,
+      questionCount: DEFAULT_QUESTION_COUNT,
+      now: ctx.deps.clock.now(),
+    },
+    meta: { lessonId },
   });
-  if (!built.ok) return err(built.error);
+};
 
-  const existing = quizOfLesson(state, lessonId);
-  const quiz: Quiz = {
-    id: existing?.id ?? toQuizId(ctx.deps.ids.next("quiz")),
-    lessonId,
-    questions: built.value.questions,
-  };
-  ctx.store.dispatch({ type: "quizzes/upsert", quiz });
-  return ok(quiz);
+export const generateQuiz = async (
+  ctx: AppContext,
+  lessonId: LessonId,
+): Promise<Result<Generation<QuizDraft>, AppError>> => {
+  const request = quizRequest(ctx, lessonId);
+  if (!request.ok) return request;
+  return runGeneration(ctx, request.value);
 };
 
 /** Grades an attempt and records it. Marking the session done stays the user's call. */

@@ -11,7 +11,7 @@ import {
   type TopicId,
 } from "@pna/core";
 import { describe, expect, it, vi } from "vitest";
-import { failingProvider, harness } from "../testing/harness.js";
+import { failingProvider, harness, produced } from "../testing/harness.js";
 import {
   changeSchedule,
   commitProgram,
@@ -198,7 +198,10 @@ describe("generateLesson", () => {
 
     const result = await generateLesson(ctx, lessonId);
     if (!result.ok) throw new Error("expected ok");
-    expect(state().lessonContent[lessonId]).toEqual(result.value);
+    expect(state().lessonContent[lessonId]).toMatchObject({
+      ...produced(result.value),
+      lessonId,
+    });
     expect(programLessons(state().programs[program.id]!)[0]!.status).toBe("ready");
   });
 
@@ -252,7 +255,8 @@ describe("generateQuiz", () => {
 
     const result = await generateQuiz(ctx, lessonId);
     if (!result.ok) throw new Error("expected ok");
-    expect(quizOfLesson(state(), lessonId)?.id).toBe(result.value.id);
+    expect(produced(result.value).questions.length).toBeGreaterThan(0);
+    expect(quizOfLesson(state(), lessonId)?.lessonId).toBe(lessonId);
   });
 
   it("regenerating replaces the questions but keeps the quiz id", async () => {
@@ -261,9 +265,10 @@ describe("generateQuiz", () => {
     await generateLesson(ctx, lessonId);
 
     const first = await generateQuiz(ctx, lessonId);
+    const firstId = quizOfLesson(state(), lessonId)?.id;
     const second = await generateQuiz(ctx, lessonId);
     if (!first.ok || !second.ok) throw new Error("expected ok");
-    expect(second.value.id).toBe(first.value.id);
+    expect(quizOfLesson(state(), lessonId)?.id).toBe(firstId);
     expect(Object.keys(state().quizzes)).toHaveLength(1);
   });
 });
@@ -284,8 +289,10 @@ describe("submitQuiz", () => {
     const quiz = await generateQuiz(ctx, lessonId);
     if (!quiz.ok) throw new Error("expected ok");
 
+    const stored = quizOfLesson(state(), lessonId);
+    if (!stored) throw new Error("expected a stored quiz");
     const answers = {
-      choices: Object.fromEntries(quiz.value.questions.map((q) => [q.id, ["a"]])),
+      choices: Object.fromEntries(stored.questions.map((q) => [q.id, ["a"]])),
       texts: {},
     };
     const attempt = submitQuiz(ctx, lessonId, answers);

@@ -3,7 +3,11 @@
 export * from "./errors.js";
 export * from "./store.js";
 export * from "./tasks.js";
+export * from "./ports/jobs.js";
+export * from "./adapters/remote-jobs.js";
 export * from "./container.js";
+
+export * from "./usecases/jobs.js";
 
 export * from "./usecases/topics.js";
 export * from "./usecases/sources.js";

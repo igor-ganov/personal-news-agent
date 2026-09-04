@@ -117,6 +117,12 @@ importers:
 
   services/api:
     dependencies:
+      '@pna/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
+      '@pna/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@simplewebauthn/server':
         specifier: ^13.3.2
         version: 13.3.2

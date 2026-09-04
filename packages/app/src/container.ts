@@ -7,7 +7,7 @@ import {
   type IdFactory,
 } from "@pna/core";
 import type { ContentProvider } from "@pna/agent";
-import type { AuthClient, SessionStore } from "@pna/auth";
+import type { AuthClient, JobsClient, SessionStore } from "@pna/auth";
 import {
   createOwnedRepository,
   createStateRepository,
@@ -19,6 +19,8 @@ import {
   type StateRepository,
 } from "@pna/storage";
 import { createSecretStore } from "@pna/storage";
+import { createRemoteJobs } from "./adapters/remote-jobs.js";
+import type { JobsGateway } from "./ports/jobs.js";
 import { createStore, type Store } from "./store.js";
 import { createTaskTracker, type TaskTracker } from "./tasks.js";
 import { createAccountService, type AccountService } from "./usecases/account.js";
@@ -35,6 +37,12 @@ export interface AppDeps {
    * no API configured is a working offline app, not a broken one.
    */
   readonly account: AccountService | null;
+  /**
+   * Where generation runs when there is an account to run it for. Absent means
+   * every call is made from this device and dies with it — correct for a build
+   * with no server, and the fallback when nobody is signed in.
+   */
+  readonly jobs: JobsGateway | null;
 }
 
 export interface AppContext {
@@ -45,6 +53,11 @@ export interface AppContext {
 export interface AuthWiring {
   readonly client: AuthClient;
   readonly sessions: SessionStore;
+  /**
+   * The jobs half of the same API. Without it the app still signs in and syncs;
+   * it just runs generation on the device, as it did before there was a server.
+   */
+  readonly jobs?: JobsClient;
 }
 
 export interface BootstrapOptions {
@@ -113,6 +126,9 @@ export const bootstrap = async (options: BootstrapOptions): Promise<Bootstrapped
   // data, not on the local document it happened to load a moment ago.
   if (account) await account.restore();
 
+  const jobs =
+    account && options.auth?.jobs ? createRemoteJobs(options.auth.jobs, account) : null;
+
   const context: AppContext = {
     store,
     deps: {
@@ -123,6 +139,7 @@ export const bootstrap = async (options: BootstrapOptions): Promise<Bootstrapped
       secrets,
       tasks: options.tasks ?? createTaskTracker(),
       account,
+      jobs,
     },
   };
 

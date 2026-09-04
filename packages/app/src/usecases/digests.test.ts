@@ -1,7 +1,7 @@
 import type { ContentProvider } from "@pna/agent";
 import { digestsOfPeriod, latestDigest, type DigestDraft, type TopicId } from "@pna/core";
 import { describe, expect, it, vi } from "vitest";
-import { failingProvider, harness } from "../testing/harness.js";
+import { failingProvider, harness, produced } from "../testing/harness.js";
 import { DIGEST_HISTORY, digestTaskKey, generateDigest } from "./digests.js";
 import { addSourceByHand, changeSourceStatus } from "./sources.js";
 import { addTopic } from "./topics.js";
@@ -57,8 +57,12 @@ describe("generateDigest", () => {
     const result = await generateDigest(ctx, { topicId, period: "week" });
 
     if (!result.ok) throw new Error("expected ok");
-    expect(result.value).toMatchObject({ topicId, period: "week", headline: "Заголовок" });
-    expect(latestDigest(state().digests, topicId, "week")?.id).toBe(result.value.id);
+    expect(produced(result.value)).toMatchObject({ headline: "Заголовок" });
+    expect(latestDigest(state().digests, topicId, "week")).toMatchObject({
+      topicId,
+      period: "week",
+      headline: "Заголовок",
+    });
   });
 
   it("defaults to a rolling window and honours an explicit mode", async () => {
@@ -96,13 +100,13 @@ describe("generateDigest", () => {
   });
 
   it("records which sources the digest was built from", async () => {
-    const { ctx, topicId } = withTopic(digesting());
+    const { ctx, state, topicId } = withTopic(digesting());
     const source = addSourceByHand(ctx, topicId, { title: "A", url: "a.example/feed" });
     if (!source.ok) throw new Error("expected ok");
 
     const result = await generateDigest(ctx, { topicId, period: "day" });
     if (!result.ok) throw new Error("expected ok");
-    expect(result.value.sourceIds).toEqual([source.value.id]);
+    expect(latestDigest(state().digests, topicId, "day")?.sourceIds).toEqual([source.value.id]);
   });
 
   it("adds to the history instead of replacing what is there", async () => {
@@ -112,7 +116,8 @@ describe("generateDigest", () => {
     if (!first.ok || !second.ok) throw new Error("expected ok");
 
     const history = digestsOfPeriod(state().digests, topicId, "day");
-    expect(history.map((d) => d.id)).toEqual([second.value.id, first.value.id]);
+    expect(history).toHaveLength(2);
+    expect(new Set(history.map((d) => d.id)).size).toBe(2);
     expect(history[1]!.sections).toHaveLength(1);
   });
 

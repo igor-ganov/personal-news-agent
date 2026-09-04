@@ -12,6 +12,18 @@ export interface Env {
   /** SHA-256 fingerprints of the Android signing certs, comma-separated. */
   readonly ANDROID_CERT_FINGERPRINTS?: string;
   readonly ANDROID_PACKAGE_NAME?: string;
+  /**
+   * The key generation runs under when an account has not uploaded its own.
+   * A deployment without either simply cannot generate, and says so.
+   */
+  readonly ANTHROPIC_API_KEY?: string;
+  /**
+   * Encrypts the per-account API keys at rest. Rotating it makes every stored
+   * key unreadable, which is a re-upload, not a lockout.
+   */
+  readonly PROVIDER_KEY_SECRET?: string;
+  /** Model used when the account did not pin one. */
+  readonly DEFAULT_MODEL?: string;
 }
 
 export const allowedOrigins = (env: Env): string[] =>

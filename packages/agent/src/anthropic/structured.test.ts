@@ -39,14 +39,17 @@ const toolUse = (input: unknown, id = "tu_1") =>
 const text = (value: string) =>
   message({ content: [{ type: "text", text: value, citations: null } as Anthropic.TextBlock] });
 
+/** Fakes the streaming client: one call, one final message. */
 const clientOf = (responses: Anthropic.Message[] | ((n: number) => Anthropic.Message)) => {
-  const create = vi.fn(async (_params: Anthropic.MessageCreateParamsNonStreaming) => {
-    const index = create.mock.calls.length - 1;
-    return typeof responses === "function"
-      ? responses(index)
-      : (responses[index] ?? message({ stop_reason: "end_turn" }));
+  const stream = vi.fn((_params: Anthropic.MessageStreamParams) => {
+    const index = stream.mock.calls.length - 1;
+    const result =
+      typeof responses === "function"
+        ? responses(index)
+        : (responses[index] ?? message({ stop_reason: "end_turn" }));
+    return { finalMessage: async () => result };
   });
-  return { client: { messages: { create } } satisfies MessagesClient, create };
+  return { client: { messages: { stream } } satisfies MessagesClient, create: stream };
 };
 
 describe("runStructured", () => {
@@ -167,9 +170,11 @@ describe("runStructured", () => {
   it("surfaces a transport failure as a provider error", async () => {
     const client: MessagesClient = {
       messages: {
-        create: async () => {
-          throw new Error("socket hang up");
-        },
+        stream: () => ({
+          finalMessage: async () => {
+            throw new Error("socket hang up");
+          },
+        }),
       },
     };
     expect(await runStructured(client, { model: "claude-opus-5" }, call)).toEqual({

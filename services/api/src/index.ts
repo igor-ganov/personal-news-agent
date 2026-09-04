@@ -3,7 +3,11 @@ import { cors } from "hono/cors";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import { pruneExpired } from "./db.js";
 import { allowedOrigins, type Env } from "./env.js";
+import { pruneJobs } from "./jobs/db.js";
+import { runPending } from "./jobs/runner.js";
 import { authRoutes } from "./routes/auth.js";
+import { jobRoutes } from "./routes/jobs.js";
+import { providerRoutes } from "./routes/provider.js";
 import { stateRoutes } from "./routes/state.js";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -25,6 +29,25 @@ app.use("/state/*", (c, next) =>
     origin: allowedOrigins(c.env),
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "PUT", "OPTIONS"],
+    credentials: false,
+    maxAge: 600,
+  })(c, next),
+);
+
+app.use("/jobs/*", (c, next) =>
+  cors({
+    origin: allowedOrigins(c.env),
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    credentials: false,
+    maxAge: 600,
+  })(c, next),
+);
+app.use("/provider-key/*", (c, next) =>
+  cors({
+    origin: allowedOrigins(c.env),
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "PUT", "DELETE", "OPTIONS"],
     credentials: false,
     maxAge: 600,
   })(c, next),
@@ -61,13 +84,24 @@ app.get("/.well-known/assetlinks.json", (c) => {
 
 app.route("/auth", authRoutes);
 app.route("/state", stateRoutes);
+app.route("/jobs", jobRoutes);
+app.route("/provider-key", providerRoutes);
 
 app.notFound((c) => c.json({ code: "not_found", message: "Нет такого маршрута" }, 404));
 
 export default {
   fetch: app.fetch,
-  /** Expired challenges and sessions are rows; a daily sweep keeps them from piling up. */
+  /**
+   * The sweep does two things.
+   *
+   * Generation nobody is running — an invocation that died mid-call — is picked
+   * up, so work started from a phone that was closed finishes on its own rather
+   * than waiting for someone to open the app. Expired challenges, sessions and
+   * long-finished jobs are rows, and this is what removes them.
+   */
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    await runPending(env);
     await pruneExpired(env);
+    await pruneJobs(env);
   },
 };

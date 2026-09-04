@@ -5,15 +5,17 @@ import {
   commitProgram,
   deleteTopic,
   digestTaskKey,
+  dismissJob,
+  failTask,
   draftProgram,
   editTopic,
   ensureSourcesFresh,
   forgetSource,
   generateDigest,
+  heldPlan,
   programTaskKey,
   refreshTopicSources,
   sourceTaskKey,
-  type AppError,
 } from "@pna/app";
 import {
   ancestorsOf,
@@ -26,6 +28,7 @@ import {
   type PlanEdit,
   type ProgramDraft,
   type ProgramId,
+  type Schedule,
   type SourceId,
   type TopicId,
   type UserSourceDraft,
@@ -43,21 +46,22 @@ const TABS = [
   { id: "about", label: "О теме" },
 ];
 
-type SkillsMode = "list" | "wizard" | "plan";
+type SkillsMode = "list" | "wizard";
 
 /**
  * A topic: its digests, its programs, its sources and its own settings.
  *
- * The plan draft lives here rather than in the store on purpose — it is not
- * part of the user's data until they commit it.
+ * A plan being drafted is not screen state: the generation runs on the server
+ * and can finish while this app is closed, so the plan waits under its task key
+ * and the screen renders whatever is there — after a restart, or on a device
+ * that never asked for it.
  */
 export class PnaTopicScreen extends ConnectedElement {
   static override properties = {
     topicId: { type: String },
     tab: { type: String },
     _mode: { state: true },
-    _draft: { state: true },
-    _request: { state: true },
+    _edited: { state: true },
     _planError: { state: true },
     _editing: { state: true },
     _formError: { state: true },
@@ -66,8 +70,8 @@ export class PnaTopicScreen extends ConnectedElement {
   declare topicId: TopicId;
   declare tab: TopicTab;
   private declare _mode: SkillsMode;
-  private declare _draft: ProgramDraft | null;
-  private declare _request: ProgramRequest | null;
+  /** The user's edits to the plan that came back, before they commit it. */
+  private declare _edited: ProgramDraft | null;
   private declare _planError: string;
   private declare _editing: boolean;
   private declare _formError: string;
@@ -77,8 +81,7 @@ export class PnaTopicScreen extends ConnectedElement {
     super();
     this.tab = "news";
     this._mode = "list";
-    this._draft = null;
-    this._request = null;
+    this._edited = null;
     this._planError = "";
     this._editing = false;
     this._formError = "";
@@ -141,22 +144,7 @@ export class PnaTopicScreen extends ConnectedElement {
   private autoRefreshSources(): void {
     if (!this.topicId || this.refreshed.has(this.topicId)) return;
     this.refreshed.add(this.topicId);
-    const key = sourceTaskKey(this.topicId);
-    void this.ctx.deps.tasks
-      .run(key, async () => {
-        const result = await ensureSourcesFresh(this.ctx, this.topicId);
-        if (!result.ok) throw new Error(result.error.message);
-      })
-      .catch(() => {});
-  }
-
-  private run(key: string, work: () => Promise<{ ok: boolean; error?: AppError }>): void {
-    void this.ctx.deps.tasks
-      .run(key, async () => {
-        const result = await work();
-        if (!result.ok) throw new Error(result.error?.message ?? "Не получилось");
-      })
-      .catch(() => {});
+    void ensureSourcesFresh(this.ctx, this.topicId);
   }
 
   private goTab(tab: string): void {
@@ -166,56 +154,70 @@ export class PnaTopicScreen extends ConnectedElement {
   /* ------------------------------------------------------------- skills -- */
 
   private requestPlan(request: ProgramRequest): void {
-    this._request = request;
     this._planError = "";
-    const key = programTaskKey(this.topicId);
+    this._edited = null;
+    void draftProgram(this.ctx, {
+      topicId: this.topicId,
+      intent: request.intent,
+      schedule: request.schedule,
+      basedOn: request.basedOn,
+      continuation: request.continuation,
+    });
+  }
 
-    void this.ctx.deps.tasks
-      .run(key, async () => {
-        const result = await draftProgram(this.ctx, {
-          topicId: this.topicId,
-          intent: request.intent,
-          schedule: request.schedule,
-          basedOn: request.basedOn,
-          continuation: request.continuation,
-        });
-        if (!result.ok) throw new Error(result.error.message);
-        return result.value;
-      })
-      .then((draft) => {
-        this._draft = draft;
-        this._mode = "plan";
-      })
-      .catch(() => {});
+  /** The plan waiting for this topic, if one has finished generating. */
+  private plan(): { draft: ProgramDraft; schedule: Schedule; request: ProgramRequest } | null {
+    const held = heldPlan(this.ctx.deps.tasks.get(programTaskKey(this.topicId)));
+    if (!held) return null;
+    return {
+      draft: this._edited ?? held.draft,
+      schedule: held.request.schedule,
+      request: {
+        intent: held.request.intent,
+        schedule: held.request.schedule,
+        basedOn: held.request.basedOn,
+        continuation: held.request.continuation,
+      },
+    };
   }
 
   private applyEdit(edit: PlanEdit): void {
-    if (!this._draft) return;
-    const next = applyPlanEdit(this._draft, edit);
+    const plan = this.plan();
+    if (!plan) return;
+
+    const next = applyPlanEdit(plan.draft, edit);
     if (!next.ok) {
       this._planError = next.error;
       return;
     }
     this._planError = "";
-    this._draft = next.value;
+    this._edited = next.value;
+  }
+
+  private discardPlan(): void {
+    this._edited = null;
+    this._planError = "";
+    this._mode = "list";
+    void dismissJob(this.ctx, programTaskKey(this.topicId));
   }
 
   private commit(): void {
-    if (!this._draft || !this._request) return;
+    const plan = this.plan();
+    if (!plan) return;
+
     const result = commitProgram(this.ctx, {
       topicId: this.topicId,
-      draft: this._draft,
-      schedule: this._request.schedule,
-      basedOn: this._request.basedOn,
-      continuation: this._request.continuation,
+      draft: plan.draft,
+      schedule: plan.schedule,
+      basedOn: plan.request.basedOn,
+      continuation: plan.request.continuation,
     });
     if (!result.ok) {
       this._planError = result.error.message;
       return;
     }
-    this._draft = null;
-    this._request = null;
-    this._mode = "list";
+
+    this.discardPlan();
     navigate(routeHref({ name: "program", programId: result.value.id }));
   }
 
@@ -223,6 +225,20 @@ export class PnaTopicScreen extends ConnectedElement {
     const state = this.ctx.store.getState();
     const overview = topicOverview(state, this.topicId);
     const key = programTaskKey(this.topicId);
+    const plan = this.plan();
+
+    // A plan that finished generating wins over whatever the screen was doing:
+    // it may have arrived while the app was closed, or from another device.
+    if (plan) {
+      return html`<pna-plan-editor
+        .draft=${plan.draft}
+        .capacity=${capacityReport(plan.schedule.intensity, draftLessonMinutes(plan.draft))}
+        .error=${this._planError}
+        @plan-edit=${(e: CustomEvent<PlanEdit>) => this.applyEdit(e.detail)}
+        @plan-commit=${() => this.commit()}
+        @plan-discard=${() => this.discardPlan()}
+      ></pna-plan-editor>`;
+    }
 
     if (this._mode === "wizard") {
       return html`<pna-program-wizard
@@ -234,29 +250,13 @@ export class PnaTopicScreen extends ConnectedElement {
       ></pna-program-wizard>`;
     }
 
-    if (this._mode === "plan" && this._draft) {
-      return html`<pna-plan-editor
-        .draft=${this._draft}
-        .capacity=${this._request
-          ? capacityReport(this._request.schedule.intensity, draftLessonMinutes(this._draft))
-          : null}
-        .error=${this._planError}
-        @plan-edit=${(e: CustomEvent<PlanEdit>) => this.applyEdit(e.detail)}
-        @plan-commit=${() => this.commit()}
-        @plan-discard=${() => {
-          this._draft = null;
-          this._mode = "list";
-        }}
-      ></pna-plan-editor>`;
-    }
-
     return html`<pna-program-list
       .programs=${overview?.programs ?? []}
       @program-open=${(e: CustomEvent<ProgramId>) =>
         navigate(routeHref({ name: "program", programId: e.detail }))}
       @program-new=${() => {
         this._mode = "wizard";
-        this.ctx.deps.tasks.reset(key);
+        void dismissJob(this.ctx, key);
       }}
     ></pna-program-list>`;
   }
@@ -360,9 +360,7 @@ export class PnaTopicScreen extends ConnectedElement {
           .busyPeriods=${busy}
           .error=${errors[0] ?? ""}
           @digest-request=${(e: CustomEvent<DigestPeriod>) =>
-            this.run(digestTaskKey(this.topicId, e.detail), () =>
-              generateDigest(this.ctx, { topicId: this.topicId, period: e.detail }),
-            )}
+            void generateDigest(this.ctx, { topicId: this.topicId, period: e.detail })}
         ></pna-digest-panel>`;
       }
 
@@ -373,7 +371,7 @@ export class PnaTopicScreen extends ConnectedElement {
           ?busy=${this.isBusy(key)}
           .error=${this.taskError(key)}
           @source-refresh=${() =>
-            this.run(key, () => refreshTopicSources(this.ctx, this.topicId, { force: true }))}
+            void refreshTopicSources(this.ctx, this.topicId, { force: true })}
           @source-add=${(e: CustomEvent<UserSourceDraft>) => {
             const result = addSourceByHand(this.ctx, this.topicId, e.detail);
             if (!result.ok) this.reportSourceError(key, result.error.message);
@@ -393,11 +391,7 @@ export class PnaTopicScreen extends ConnectedElement {
   }
 
   private reportSourceError(key: string, message: string): void {
-    void this.ctx.deps.tasks
-      .run(key, async () => {
-        throw new Error(message);
-      })
-      .catch(() => {});
+    failTask(this.ctx.deps.tasks, key, message);
   }
 
   override render() {
