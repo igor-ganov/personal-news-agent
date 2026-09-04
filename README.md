@@ -358,7 +358,20 @@ challenge и отдаёт тот же JSON. Отдельный набор тес
 против живого API:
 
 ```bash
-PNA_API_URL=http://127.0.0.1:8787 pnpm vitest run --project api
+cd services/api && pnpm wrangler dev --local   --var RP_ID:localhost --var ALLOWED_ORIGINS:http://localhost:8787   --var PROVIDER_KEY_SECRET:test-secret
+
+PNA_API_URL=http://127.0.0.1:8787 PNA_API_ORIGIN=http://localhost:8787   pnpm vitest run --project api
+```
+
+Этот же набор проверяет задания: постановку, единственность живого задания на
+ключ, внятную ошибку без ключа API и удаление обработанного задания.
+
+Отдельно — проверка, что воркер действительно доходит до модели: с заведомо
+неверным ключом задание обязано завершиться её ошибкой, а не тишиной. Она ходит
+в сеть, поэтому включается отдельно:
+
+```bash
+PNA_LIVE_MODEL=1 PNA_API_URL=http://127.0.0.1:8787   PNA_API_ORIGIN=http://localhost:8787 pnpm vitest run --project api
 ```
 
 Без `PNA_API_URL` эти тесты пропускаются, и обычный прогон остаётся офлайновым.

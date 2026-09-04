@@ -29,6 +29,57 @@ describe.skipIf(!BASE)("живой API", () => {
   let passkeys: ReturnType<typeof virtualPasskeyAgent>;
   let rpId = "";
   let token = "";
+  let jobId = "";
+
+  /** The shape `topicContextOf` produces — what every prompt builder walks. */
+  const probeContext = () => {
+    const topic = {
+      id: "topic_probe",
+      parentId: null,
+      title: "Проба",
+      brief: "Проверка связки",
+      focusAreas: [],
+      excludes: [],
+      language: "ru",
+      level: "intermediate",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    return {
+      topic,
+      path: [topic],
+      focusAreas: [],
+      excludes: [],
+      language: "ru",
+      level: "intermediate",
+    };
+  };
+
+  interface LiveJob {
+    readonly id: string;
+    readonly status: string;
+    readonly error: { readonly message: string } | null;
+  }
+
+  /**
+   * Waits for a job to leave the state it was submitted in.
+   *
+   * Generation runs after the response, so the test asks again rather than
+   * assuming the queue moved on by itself — and gives up rather than hanging.
+   */
+  const pollJob = async (
+    id: string,
+    done: (job: LiveJob) => boolean,
+    attempts = 20,
+  ): Promise<LiveJob | null> => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const response = await raw(`/jobs/${id}`, { token });
+      const job = response.json?.job as LiveJob | undefined;
+      if (job && done(job)) return job;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return null;
+  };
 
   beforeAll(async () => {
     const health = await raw("/health");
@@ -150,6 +201,132 @@ describe.skipIf(!BASE)("живой API", () => {
       stale.ok && stale.value.kind === "conflict" && (stale.value.remote.body as { topics: string[] }).topics,
     ).toEqual(["первая"]);
   });
+
+  it("без ключа API задание падает с внятной ошибкой, а не молча", async () => {
+    const submitted = await raw("/jobs", {
+      method: "POST",
+      token,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "sources:topic_probe",
+        kind: "sources",
+        input: {
+          context: probeContext(),
+          known: [],
+          blockedHosts: [],
+          limit: 3,
+          now: new Date().toISOString(),
+        },
+        meta: { topicId: "topic_probe" },
+      }),
+    });
+
+    expect(submitted.status).toBe(202);
+    expect(submitted.json.job.status).toBe("queued");
+    jobId = submitted.json.job.id;
+
+    // Постановка отвечает сразу, генерация идёт после ответа.
+    const listed = await pollJob(jobId, (job) => job.status !== "queued");
+    expect(["failed", "running"]).toContain(listed?.status);
+  });
+
+  it("не берётся за неизвестный вид задания", async () => {
+    const bad = await raw("/jobs", {
+      method: "POST",
+      token,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "x", kind: "lecture", input: {} }),
+    });
+
+    expect(bad.status).toBe(400);
+  });
+
+  it("одно живое задание на ключ, сколько бы устройств ни просило", async () => {
+    const key = "digest:topic_probe:week";
+    const body = JSON.stringify({
+      key,
+      kind: "digest",
+      input: { now: new Date().toISOString() },
+      meta: { topicId: "topic_probe" },
+    });
+    const headers = { "Content-Type": "application/json" };
+
+    // Два устройства просят одно и то же одновременно.
+    const [first, second] = await Promise.all([
+      raw("/jobs", { method: "POST", token, headers, body }),
+      raw("/jobs", { method: "POST", token, headers, body }),
+    ]);
+    expect([first.status, second.status]).toEqual([202, 202]);
+
+    const listed = await raw("/jobs", { token });
+    const live = (listed.json.jobs as Array<{ key: string; status: string; id: string }>).filter(
+      (job) => job.key === key && (job.status === "queued" || job.status === "running"),
+    );
+    expect(live.length).toBeLessThanOrEqual(1);
+
+    for (const job of listed.json.jobs as Array<{ key: string; id: string }>) {
+      if (job.key === key) await raw(`/jobs/${job.id}`, { method: "DELETE", token });
+    }
+  });
+
+  it("задание исчезает, когда приложение с ним закончило", async () => {
+    expect((await raw(`/jobs/${jobId}`, { method: "DELETE", token })).status).toBe(200);
+
+    const listed = await raw("/jobs", { token });
+    expect(listed.json.jobs.some((job: { id: string }) => job.id === jobId)).toBe(false);
+  });
+
+  it("говорит, чем сервер может генерировать", async () => {
+    const status = await raw("/provider-key", { token });
+
+    expect(status.status).toBe(200);
+    expect(typeof status.json.configured).toBe("boolean");
+    expect(status.json.ownKey).toBe(false);
+  });
+
+  /**
+   * Проверяет то, что нельзя проверить без выхода наружу: воркер действительно
+   * доходит до вызова модели. Ключ заведомо неверный — ответом будет 401 от
+   * Anthropic, платить не за что. Включается PNA_LIVE_MODEL=1.
+   */
+  it.skipIf(process.env.PNA_LIVE_MODEL !== "1")(
+    "с ключом аккаунта задание доходит до модели и возвращает её ошибку",
+    async () => {
+      const saved = await raw("/provider-key", {
+        method: "PUT",
+        token,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: "sk-ant-obviously-invalid", model: "claude-opus-5" }),
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.json.ownKey).toBe(true);
+
+      const submitted = await raw("/jobs", {
+        method: "POST",
+        token,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "sources:topic_model",
+          kind: "sources",
+          input: {
+            context: probeContext(),
+            known: [],
+            blockedHosts: [],
+            limit: 3,
+            now: new Date().toISOString(),
+          },
+          meta: { topicId: "topic_model" },
+        }),
+      });
+
+      const finished = await pollJob(submitted.json.job.id, (job) => job.status === "failed", 60);
+      expect(finished?.error?.message).toMatch(/Ключ API отклонён|Ошибка API/);
+
+      await raw(`/jobs/${submitted.json.job.id}`, { method: "DELETE", token });
+      await raw("/provider-key", { method: "DELETE", token });
+    },
+    30_000,
+  );
 
   it("гасит сессию при выходе", async () => {
     expect((await client.logout(token)).ok).toBe(true);
