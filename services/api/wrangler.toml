@@ -10,9 +10,11 @@ RP_ID = "pna-api.igor-ganov.workers.dev"
 RP_NAME = "Личный агент"
 ALLOWED_ORIGINS = "https://pna-api.igor-ganov.workers.dev,http://localhost:4321,http://tauri.localhost"
 ANDROID_PACKAGE_NAME = "dev.ganov.pna"
-# SHA-256 отпечаток ключа, которым подписан APK. Подпишете другим ключом —
-# Credential Manager перестанет узнавать приложение, и вход по ключу отвалится.
-ANDROID_CERT_FINGERPRINTS = "7A:26:19:0E:62:01:26:D8:DE:16:C8:DD:26:63:94:EC:1B:3F:68:AC:30:45:B1:08:8F:0C:46:DA:0A:C8:05:60"
+# SHA-256 отпечатки ключей, которыми подписан APK. Ключ, которого здесь нет,
+# Credential Manager не узнает, и вход по ключу доступа отвалится. Их два:
+# первый подписал уже установленную сборку, второй — тот, которым подписывает
+# пайплайн. Оба перечислены, чтобы вход работал и до, и после переустановки.
+ANDROID_CERT_FINGERPRINTS = "7A:26:19:0E:62:01:26:D8:DE:16:C8:DD:26:63:94:EC:1B:3F:68:AC:30:45:B1:08:8F:0C:46:DA:0A:C8:05:60,88:24:C3:8C:77:7D:04:12:DD:14:27:2F:C0:DA:EC:19:69:E3:29:8D:82:19:19:05:35:FC:74:81:07:C2:12:06"
 
 [[d1_databases]]
 binding = "DB"
