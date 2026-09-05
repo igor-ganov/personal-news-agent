@@ -154,7 +154,16 @@ export const createAuthClient = (options: AuthClientOptions) => {
       });
     },
 
-    async login(input: { email?: string | null } = {}): Promise<Result<AuthSession, AuthError>> {
+    /**
+     * Signs in with a key.
+     *
+     * `immediate` asks the platform to answer from what it already holds and
+     * fail silently otherwise — that is how a fresh device skips a dialog it
+     * has no answer for and goes straight to creating a key.
+     */
+    async login(
+      input: { email?: string | null; immediate?: boolean } = {},
+    ): Promise<Result<AuthSession, AuthError>> {
       const email = input.email ? normaliseEmail(input.email) : null;
       if (email !== null && !isPlausibleEmail(email))
         return err(authError("invalid", "Проверьте адрес почты"));
@@ -166,7 +175,7 @@ export const createAuthClient = (options: AuthClientOptions) => {
       if (!started.ok) return started;
 
       const assertion = await usePasskey<AuthenticationResponseJson>(() =>
-        passkeys.get(started.value.options),
+        passkeys.get(started.value.options, { immediate: input.immediate === true }),
       );
       if (!assertion.ok) return assertion;
 

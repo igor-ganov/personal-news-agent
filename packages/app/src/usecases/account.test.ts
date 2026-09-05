@@ -374,6 +374,26 @@ describe("continueWith — одна дверь", () => {
     expect(s.auth.calls()).not.toContain("register");
   });
 
+  it("проверяет ключ молча, чтобы не показывать окно, которому нечего ответить", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+
+    await s.service.continueWith({});
+
+    // Тихая проверка: система отвечает тем, что уже есть, и не открывает диалог
+    // «войти нечем» на устройстве, где ключа и не может быть.
+    expect(auth.loginInputs()[0]?.immediate).toBe(true);
+  });
+
+  it("вход ключом с другого устройства открывает системное окно намеренно", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+
+    await s.service.signInFromAnotherDevice({});
+
+    expect(auth.loginInputs()[0]?.immediate).toBe(false);
+  });
+
   it("без ключа заводит аккаунт, не спрашивая почту", async () => {
     const auth = fakeAuthClient({
       failures: { login: authError("no_credential", "Ключа нет") },

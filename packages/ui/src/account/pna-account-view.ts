@@ -164,6 +164,18 @@ export class PnaAccountView extends LitElement {
               >Продолжить</ui-button
             >
           </div>
+          <p class="hint">
+            Ключ уже есть на другом телефоне? Тогда
+            <a
+              href="#"
+              @click=${(event: Event) => {
+                event.preventDefault();
+                emit<string>(this, "account-other-device", this._email.trim());
+              }}
+              >войдите ключом с него</a
+            >
+            — система покажет QR-код, который нужно отсканировать тем устройством.
+          </p>
 
           ${this._showEmail
             ? html`<ui-field

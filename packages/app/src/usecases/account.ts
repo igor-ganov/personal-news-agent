@@ -220,6 +220,16 @@ export const createAccountService = (deps: AccountDeps) => {
     signIn: (input: { email?: string | null } = {}) => finish(client.login(input)),
 
     /**
+     * The full system dialog, on purpose.
+     *
+     * This is the one place a sheet with "ключ с другого устройства" is the
+     * point rather than an obstacle: the key lives on another phone and the
+     * platform's own QR flow is what brings it here.
+     */
+    signInFromAnotherDevice: (input: { email?: string | null } = {}) =>
+      finish(client.login({ ...input, immediate: false })),
+
+    /**
      * One way in.
      *
      * The key already on the device is tried first — that covers every return
@@ -245,7 +255,12 @@ export const createAccountService = (deps: AccountDeps) => {
       // A second press that already knows what it wants skips the key prompt.
       if (input.create) return create();
 
-      const signedIn = await finish(client.login(email ? { email } : {}));
+      // Silent: the platform answers from what it already holds. On a device
+      // with no key that returns immediately, without the dead-end sheet, and
+      // the next line turns the press into a fingerprint and an account.
+      const signedIn = await finish(
+        client.login({ ...(email ? { email } : {}), immediate: true }),
+      );
       if (signedIn.ok) return signedIn;
 
       // Nothing to sign in with: this device starts an account. No address is

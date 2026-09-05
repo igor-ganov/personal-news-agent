@@ -2,6 +2,7 @@ import type {
   AuthenticationResponseJson,
   PasskeyAgent,
   PasskeyCreationOptions,
+  PasskeyHints,
   PasskeyRequestOptions,
   RegistrationResponseJson,
 } from "@pna/auth";
@@ -64,10 +65,16 @@ export const tauriPasskeys = (): PasskeyAgent => ({
     }
   },
 
-  async get(options: PasskeyRequestOptions): Promise<AuthenticationResponseJson> {
+  async get(
+    options: PasskeyRequestOptions,
+    hints: PasskeyHints = {},
+  ): Promise<AuthenticationResponseJson> {
     try {
       const result = await invokeTauri<PluginResponse>("plugin:passkeys|get", {
-        payload: { requestJson: JSON.stringify(options) },
+        payload: {
+          requestJson: JSON.stringify(options),
+          immediate: hints.immediate === true,
+        },
       });
       return JSON.parse(result.responseJson) as AuthenticationResponseJson;
     } catch (error) {

@@ -199,6 +199,31 @@ export class PnaAccountScreen extends ConnectedElement {
     this._invite = created.ok ? created.value : null;
   }
 
+  /**
+   * The deliberate detour: the key is on another phone, and the platform's own
+   * QR flow is what brings it here. Only this path asks for the full dialog.
+   */
+  private async signInFromAnotherDevice(email: string): Promise<void> {
+    const service = this.service;
+    if (!service) return;
+
+    this._notice = "";
+    this._linkFor = null;
+    this._offerCreate = null;
+
+    const outcome = await this.run(() => service.signInFromAnotherDevice({ email }));
+    if (!outcome.ok) return;
+
+    if (outcome.value.kind === "needs-choice") {
+      this._pending = outcome.value.pending;
+      return;
+    }
+
+    this._pending = null;
+    this._account = outcome.value.session.account;
+    await this.loadPasskeys(outcome.value.session.token);
+  }
+
   /** The opt-in half: an address attached after the fact, if the user wants one. */
   private async setEmail(email: string): Promise<void> {
     const service = this.service;
@@ -260,6 +285,8 @@ export class PnaAccountScreen extends ConnectedElement {
             .offerCreate=${this._offerCreate}
             @account-continue=${(e: CustomEvent<string>) => void this.signIn(e.detail)}
             @account-create=${(e: CustomEvent<string>) => void this.signIn(e.detail, true)}
+            @account-other-device=${(e: CustomEvent<string>) =>
+              void this.signInFromAnotherDevice(e.detail)}
             @account-sync=${() => void this.sync()}
             @account-sign-out=${() => void this.signOut()}
             @passkey-remove=${(e: CustomEvent<string>) => void this.removePasskey(e.detail)}

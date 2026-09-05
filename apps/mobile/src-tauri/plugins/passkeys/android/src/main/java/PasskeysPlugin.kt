@@ -27,6 +27,15 @@ import kotlinx.coroutines.launch
 @InvokeArg
 class RequestArgs {
     lateinit var requestJson: String
+
+    /**
+     * Ответить тем, что уже есть, и молча сдаться, если ключа нет.
+     *
+     * Без этого системное окно на чистом устройстве показывает «войти нечем» и
+     * ждёт, пока его закроют, — приложение узнаёт об отсутствии ключа только
+     * после. С этим оно узнаёт сразу и предлагает создать ключ.
+     */
+    var immediate: Boolean = false
 }
 
 /**
@@ -77,9 +86,10 @@ class PasskeysPlugin(private val activity: Activity) : Plugin(activity) {
         val args = invoke.parseArgs(RequestArgs::class.java)
         scope.launch {
             try {
-                val request = GetCredentialRequest(
-                    listOf(GetPublicKeyCredentialOption(requestJson = args.requestJson)),
-                )
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(GetPublicKeyCredentialOption(requestJson = args.requestJson))
+                    .setPreferImmediatelyAvailableCredentials(args.immediate)
+                    .build()
                 val response = manager.getCredential(activity, request)
                 val credential = response.credential as? PublicKeyCredential
                     ?: return@launch invoke.reject("Менеджер вернул не ключ доступа")

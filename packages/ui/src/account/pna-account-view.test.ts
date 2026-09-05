@@ -44,6 +44,15 @@ describe("когда не вошли", () => {
     expect(events).toEqual([""]);
   });
 
+  it("даёт войти ключом с другого телефона отдельным действием", async () => {
+    const element = await view();
+    const events = capture<string>(element, "account-other-device");
+
+    await click(element, query<HTMLElement>(element, "a"));
+
+    expect(events).toHaveLength(1);
+  });
+
   it("почту можно указать, если хочется", async () => {
     const element = await view();
     const events = capture<string>(element, "account-continue");

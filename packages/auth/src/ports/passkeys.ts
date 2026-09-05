@@ -35,6 +35,18 @@ export interface PasskeyRequestOptions {
   readonly extensions?: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * How badly the caller wants a dialog.
+ *
+ * `immediate` asks the platform to answer from what it already has and give up
+ * silently if that is nothing. It is what turns "войти" on a fresh device from
+ * a dead-end sheet ("No available sign-in") into an instant decision to create
+ * a key instead — the user presses once, puts a finger on the sensor, and is in.
+ */
+export interface PasskeyHints {
+  readonly immediate?: boolean;
+}
+
 export interface RegistrationResponseJson {
   readonly id: string;
   readonly rawId: string;
@@ -66,5 +78,5 @@ export interface PasskeyAgent {
   /** False on a device with no authenticator — the UI then explains instead of failing. */
   isAvailable(): Promise<boolean>;
   create(options: PasskeyCreationOptions): Promise<RegistrationResponseJson>;
-  get(options: PasskeyRequestOptions): Promise<AuthenticationResponseJson>;
+  get(options: PasskeyRequestOptions, hints?: PasskeyHints): Promise<AuthenticationResponseJson>;
 }

@@ -19,6 +19,8 @@ export interface FakeAuth {
   setDocument(body: unknown, revision?: number): void;
   /** Every call the service made, in order. */
   calls(): readonly string[];
+  /** What each login was asked for — the silent probe is a flag on the input. */
+  loginInputs(): readonly { readonly email?: string | null; readonly immediate?: boolean }[];
   session(): AuthSession;
 }
 
@@ -40,6 +42,7 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
 
   let document: RemoteDocument = { revision: 0, updatedAt: null, body: null };
   const calls: string[] = [];
+  const logins: { email?: string | null; immediate?: boolean }[] = [];
   const pending = { ...options.failures };
 
   const take = (name: keyof NonNullable<FakeAuthOptions["failures"]>): AuthError | null => {
@@ -57,8 +60,11 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
       return failure ? err(failure) : ok(session);
     },
 
-    async login(): Promise<Result<AuthSession, AuthError>> {
+    async login(input: { email?: string | null; immediate?: boolean } = {}): Promise<
+      Result<AuthSession, AuthError>
+    > {
       calls.push("login");
+      logins.push(input);
       const failure = take("login");
       return failure ? err(failure) : ok(session);
     },
@@ -122,5 +128,6 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
       document = { revision, updatedAt: instantOf("2026-08-20T10:00:00.000Z"), body };
     },
     calls: () => calls,
+    loginInputs: () => logins,
   };
 };
