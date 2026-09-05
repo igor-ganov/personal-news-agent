@@ -108,14 +108,23 @@ export const createAuthClient = (options: AuthClientOptions) => {
   return {
     isPasskeySupported: () => passkeys.isAvailable(),
 
-    async register(input: { email: string; label?: string }): Promise<Result<AuthSession, AuthError>> {
-      const email = normaliseEmail(input.email);
-      if (!isPlausibleEmail(email))
+    /**
+     * Starts an account.
+     *
+     * The address is optional: the account is the passkey. Sent one, it becomes
+     * a label and is checked for collisions; sent nothing, the account is made
+     * all the same and an address can be attached later.
+     */
+    async register(input: { email?: string; label?: string } = {}): Promise<
+      Result<AuthSession, AuthError>
+    > {
+      const email = normaliseEmail(input.email ?? "");
+      if (email && !isPlausibleEmail(email))
         return err(authError("invalid", "Проверьте адрес почты"));
 
       const started = await transport.request<{ challengeId: string; options: PasskeyCreationOptions }>(
         "/auth/register/options",
-        { method: "POST", body: { email } },
+        { method: "POST", body: email ? { email } : {} },
       );
       if (!started.ok) return started;
 
@@ -213,6 +222,20 @@ export const createAuthClient = (options: AuthClientOptions) => {
       return url
         ? ok({ url, expiresAt: instantOf(response.value.expiresAt ?? new Date().toISOString()) })
         : err(authError("server", "Сервер не вернул ссылку"));
+    },
+
+    /** Attaches an address to an account that started without one. */
+    async setEmail(token: string, email: string): Promise<Result<Account, AuthError>> {
+      const normalised = normaliseEmail(email);
+      if (!isPlausibleEmail(normalised))
+        return err(authError("invalid", "Проверьте адрес почты"));
+
+      const response = await transport.request<{ account: AccountPayload }>("/auth/email", {
+        method: "PUT",
+        token,
+        body: { email: normalised },
+      });
+      return response.ok ? ok(parseAccount(response.value.account)) : response;
     },
 
     async removePasskey(token: string, credentialId: string): Promise<Result<null, AuthError>> {

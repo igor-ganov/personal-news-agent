@@ -133,11 +133,6 @@ export class PnaAccountScreen extends ConnectedElement {
     );
     if (!outcome.ok) return;
 
-    if (outcome.value.kind === "needs-email") {
-      this._notice = "Укажите почту — по ней узнаем аккаунт или заведём новый";
-      return;
-    }
-
     if (outcome.value.kind === "needs-device-link") {
       this._linkFor = outcome.value.email;
       return;
@@ -204,6 +199,16 @@ export class PnaAccountScreen extends ConnectedElement {
     this._invite = created.ok ? created.value : null;
   }
 
+  /** The opt-in half: an address attached after the fact, if the user wants one. */
+  private async setEmail(email: string): Promise<void> {
+    const service = this.service;
+    const token = service?.current()?.token;
+    if (!service || !token) return;
+
+    const updated = await this.run(() => service.setEmail(token, email));
+    if (updated.ok) this._account = updated.value;
+  }
+
   private async removePasskey(credentialId: string): Promise<void> {
     const service = this.service;
     const token = service?.current()?.token;
@@ -259,6 +264,7 @@ export class PnaAccountScreen extends ConnectedElement {
             @account-sign-out=${() => void this.signOut()}
             @passkey-remove=${(e: CustomEvent<string>) => void this.removePasskey(e.detail)}
             @device-invite=${() => void this.invite()}
+            @account-email=${(e: CustomEvent<string>) => void this.setEmail(e.detail)}
           ></pna-account-view>
 
           <p class="note">

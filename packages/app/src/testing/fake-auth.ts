@@ -78,6 +78,11 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
       return ok(null);
     },
 
+    async setEmail(_token: string, email: string) {
+      calls.push(`setEmail:${email}`);
+      return ok({ ...account, email, displayName: email });
+    },
+
     async deviceInvite() {
       calls.push("deviceInvite");
       return ok({

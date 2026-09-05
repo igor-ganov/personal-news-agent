@@ -33,29 +33,32 @@ describe("когда не вошли", () => {
     expect(text(element)).toContain("Пароля здесь нет");
   });
 
-  it("одна кнопка на вход и на регистрацию", async () => {
+  it("одна кнопка, и почта для неё не нужна", async () => {
     const element = await view();
     const events = capture<string>(element, "account-continue");
+
+    // Поля почты на экране нет: аккаунт — это ключ доступа.
+    expect(query<HTMLElement>(element, "ui-field")).toBeNull();
+
+    await click(element, queryAll(element, "ui-button")[0] ?? null);
+    expect(events).toEqual([""]);
+  });
+
+  it("почту можно указать, если хочется", async () => {
+    const element = await view();
+    const events = capture<string>(element, "account-continue");
+
+    const buttons = queryAll<HTMLElement>(element, "ui-button");
+    const reveal = buttons.find((button) => (button.textContent ?? "").includes("Указать почту"));
+    await click(element, reveal ?? null);
 
     query<HTMLElement>(element, "ui-field")?.dispatchEvent(
       new CustomEvent("field-input", { detail: " reader@example.com ", bubbles: true, composed: true }),
     );
     await element.updateComplete;
+    await click(element, queryAll<HTMLElement>(element, "ui-button")[0] ?? null);
 
-    const buttons = queryAll<HTMLElement>(element, "ui-button");
-    expect(buttons).toHaveLength(1);
-
-    await click(element, buttons[0] ?? null);
     expect(events).toEqual(["reader@example.com"]);
-  });
-
-  it("работает и без адреса — ключ на устройстве сам скажет, кто это", async () => {
-    const element = await view();
-    const events = capture<string>(element, "account-continue");
-
-    await click(element, queryAll(element, "ui-button")[0] ?? null);
-
-    expect(events).toEqual([""]);
   });
 
   it("после закрытого окна предлагает завести аккаунт, а не молчит", async () => {
@@ -101,16 +104,41 @@ describe("когда не вошли", () => {
 });
 
 describe("когда вошли", () => {
-  it("показывает адрес и то, что он не подтверждён", async () => {
+  it("показывает адрес, когда он есть", async () => {
     const element = await view({ account, passkeys: [passkey()] });
 
     expect(text(element)).toContain("reader@example.com");
-    expect(text(element)).toContain("не подтверждён");
+    expect(text(element)).toContain("метка аккаунта");
   });
 
-  it("подтверждённый адрес описан иначе", async () => {
+  it("без адреса предлагает его добавить, а не требует", async () => {
+    const element = await view({ account: { ...account, email: "" }, passkeys: [passkey()] });
+    const events = capture<string>(element, "account-email");
+
+    const add = queryAll<HTMLElement>(element, "ui-button").find((button) =>
+      (button.textContent ?? "").includes("Добавить почту"),
+    );
+    await click(element, add ?? null);
+
+    query<HTMLElement>(element, "ui-field")?.dispatchEvent(
+      new CustomEvent("field-input", { detail: "later@example.com", bubbles: true, composed: true }),
+    );
+    await element.updateComplete;
+
+    const save = queryAll<HTMLElement>(element, "ui-button").find((button) =>
+      (button.textContent ?? "").includes("Сохранить почту"),
+    );
+    await click(element, save ?? null);
+
+    expect(events).toEqual(["later@example.com"]);
+  });
+
+  it("адрес показывается как метка, а не как пропуск", async () => {
     const element = await view({ account: { ...account, emailVerified: true }, passkeys: [passkey()] });
-    expect(text(element)).toContain("Адрес подтверждён");
+
+    // Подтверждать здесь нечего: вход даёт ключ, адрес только помогает узнать
+    // аккаунт на другом устройстве.
+    expect(text(element)).toContain("метка аккаунта");
   });
 
   it("перечисляет ключи", async () => {

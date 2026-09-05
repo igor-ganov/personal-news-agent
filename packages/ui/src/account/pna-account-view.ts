@@ -28,6 +28,8 @@ export class PnaAccountView extends LitElement {
     offerCreate: { type: String },
     _email: { state: true },
     _copied: { state: true },
+    _showEmail: { state: true },
+    _newEmail: { state: true },
   };
 
   declare account: Account | null;
@@ -46,6 +48,8 @@ export class PnaAccountView extends LitElement {
   declare offerCreate: string | null;
   private declare _email: string;
   private declare _copied: boolean;
+  private declare _showEmail: boolean;
+  private declare _newEmail: string;
 
   constructor() {
     super();
@@ -61,6 +65,8 @@ export class PnaAccountView extends LitElement {
     this.offerCreate = null;
     this._email = "";
     this._copied = false;
+    this._showEmail = false;
+    this._newEmail = "";
   }
 
   static override styles = [
@@ -140,9 +146,9 @@ export class PnaAccountView extends LitElement {
         <section>
           <h3>Вход без пароля</h3>
           <p class="hint">
-            Пароля здесь нет. Вместо него — ключ доступа: он остаётся на устройстве и
-            подтверждается тем же способом, что и разблокировка экрана. Одна кнопка на всё:
-            если ключ на устройстве есть — вход, если нет — заведём аккаунт на указанную почту.
+            Пароля здесь нет, и почта не нужна: аккаунт — это ключ доступа. Он остаётся на
+            устройстве и подтверждается так же, как разблокировка экрана. Одна кнопка на всё:
+            есть ключ — вход, нет — заводим аккаунт.
           </p>
           ${this.supported
             ? null
@@ -150,13 +156,6 @@ export class PnaAccountView extends LitElement {
                 tone="error"
                 message="На этом устройстве ключи доступа недоступны — войти не получится"
               ></ui-notice>`}
-          <ui-field
-            label="Почта"
-            input-type="email"
-            placeholder="you@example.com"
-            .value=${this._email}
-            @field-input=${(e: CustomEvent<string>) => (this._email = e.detail)}
-          ></ui-field>
           <div class="actions">
             <ui-button
               variant="primary"
@@ -165,6 +164,27 @@ export class PnaAccountView extends LitElement {
               >Продолжить</ui-button
             >
           </div>
+
+          ${this._showEmail
+            ? html`<ui-field
+                label="Почта (необязательно)"
+                input-type="email"
+                placeholder="you@example.com"
+                .value=${this._email}
+                @field-input=${(e: CustomEvent<string>) => (this._email = e.detail)}
+              ></ui-field>`
+            : html`<ui-button
+                variant="ghost"
+                ?disabled=${this.busy || !this.supported}
+                @click=${() => {
+                  this._showEmail = true;
+                }}
+                >Указать почту</ui-button
+              >`}
+          <p class="hint">
+            Почта ничего не открывает и не подтверждает — по ней просто удобнее найти аккаунт
+            на другом устройстве. Её можно добавить когда угодно потом.
+          </p>
           ${this.notice ? html`<ui-notice tone="info" message=${this.notice}></ui-notice>` : null}
           ${this.offerCreate ? this.renderOffer(this.offerCreate) : null}
           ${this.linkFor ? this.renderDeviceLink(this.linkFor) : null}
@@ -303,12 +323,34 @@ export class PnaAccountView extends LitElement {
       <div class="signed-in">
         <section>
           <h3>Аккаунт</h3>
-          <p class="email">${account.email}</p>
-          <p class="hint">
-            ${account.emailVerified
-              ? "Адрес подтверждён"
-              : "Адрес пока не подтверждён — он служит меткой аккаунта, вход даёт ключ"}
-          </p>
+          ${account.email
+            ? html`<p class="email">${account.email}</p>
+                <p class="hint">Адрес — метка аккаунта; вход всё равно даёт ключ</p>`
+            : html`<div class="email-block">${this._showEmail
+                  ? html`<ui-field
+                        label="Почта (необязательно)"
+                        input-type="email"
+                        placeholder="you@example.com"
+                        .value=${this._newEmail}
+                        @field-input=${(e: CustomEvent<string>) => (this._newEmail = e.detail)}
+                      ></ui-field>
+                      <ui-button
+                        ?disabled=${this.busy || this._newEmail.trim().length === 0}
+                        @click=${() =>
+                          emit<string>(this, "account-email", this._newEmail.trim())}
+                        >Сохранить почту</ui-button
+                      >`
+                  : html`<p class="hint">
+                        Почты у аккаунта нет — и не нужно. Добавьте, если хотите узнавать его
+                        по адресу на другом устройстве.
+                      </p>
+                      <ui-button
+                        variant="ghost"
+                        @click=${() => {
+                          this._showEmail = true;
+                        }}
+                        >Добавить почту</ui-button
+                      >`}</div>`}
           <div class="actions">
             <ui-button ?disabled=${this.busy} @click=${() => emit(this, "account-sync", null)}
               >Синхронизировать</ui-button

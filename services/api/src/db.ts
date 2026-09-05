@@ -3,8 +3,9 @@ import type { Env } from "./env.js";
 
 export interface AccountRow {
   id: string;
-  email: string;
-  email_lower: string;
+  /** Optional: an account is a passkey, and the address is a label for it. */
+  email: string | null;
+  email_lower: string | null;
   email_verified: number;
   display_name: string;
   created_at: string;
@@ -35,13 +36,13 @@ export const findAccountByEmail = (env: Env, emailLower: string): Promise<Accoun
 export const findAccountById = (env: Env, id: string): Promise<AccountRow | null> =>
   env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<AccountRow>();
 
-export const createAccount = async (env: Env, email: string): Promise<AccountRow> => {
+export const createAccount = async (env: Env, email: string | null): Promise<AccountRow> => {
   const row: AccountRow = {
     id: randomId(),
     email,
-    email_lower: email.toLowerCase(),
+    email_lower: email ? email.toLowerCase() : null,
     email_verified: 0,
-    display_name: email.split("@")[0] ?? "",
+    display_name: email ? (email.split("@")[0] ?? "") : "",
     created_at: nowIso(),
   };
   await env.DB.prepare(
@@ -227,6 +228,29 @@ export const accountForToken = async (env: Env, token: string): Promise<AccountR
       .run();
   }
   return row;
+};
+
+/**
+ * Attaches an address to an account that did not have one — the opt-in half.
+ * Returns false when someone else already holds it.
+ */
+export const setAccountEmail = async (
+  env: Env,
+  accountId: string,
+  email: string,
+): Promise<boolean> => {
+  const lower = email.toLowerCase();
+  const taken = await findAccountByEmail(env, lower);
+  if (taken && taken.id !== accountId) return false;
+
+  await env.DB.prepare(
+    `UPDATE accounts SET email = ?, email_lower = ?, email_verified = 0,
+       display_name = CASE WHEN display_name = '' THEN ? ELSE display_name END
+     WHERE id = ?`,
+  )
+    .bind(email, lower, email.split("@")[0] ?? "", accountId)
+    .run();
+  return true;
 };
 
 export const revokeSession = async (env: Env, token: string): Promise<void> => {

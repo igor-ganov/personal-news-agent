@@ -48,16 +48,13 @@ export type SignInOutcome =
  * What the single door can answer.
  *
  * Signing in and signing up are the same act for the user: they press one
- * button, and the difference — is there a key on this device, is there already
- * an account behind that address — is the app's problem, not theirs. The two
- * extra outcomes are the only cases where the app genuinely needs something
- * back: an address, or a way to prove this device belongs to an account that
- * already exists elsewhere.
+ * button. The account is the passkey, so nothing else is required — an address
+ * is a label they may add, not a credential. The extra outcomes cover the two
+ * cases the app cannot decide alone: proving this device belongs to an account
+ * that already exists elsewhere, and a prompt that was dismissed.
  */
 export type EntryOutcome =
   | SignInOutcome
-  /** No key here and no address given — nothing identifies the account yet. */
-  | { readonly kind: "needs-email" }
   /** The account exists, but this device has no key for it. */
   | { readonly kind: "needs-device-link"; readonly email: string }
   /**
@@ -199,6 +196,9 @@ export const createAccountService = (deps: AccountDeps) => {
     /** A one-time link that enrolls another device into this account. */
     deviceInvite: (token: string) => client.deviceInvite(token),
 
+    /** Attaches an address to an account that started without one. */
+    setEmail: (token: string, email: string) => client.setEmail(token, email),
+
     /** Picks up a session saved on a previous run and loads that account's data. */
     async restore(): Promise<AuthSession | null> {
       const saved = await sessions.load();
@@ -235,25 +235,27 @@ export const createAccountService = (deps: AccountDeps) => {
       const label = input.label ? { label: input.label } : {};
 
       const create = async (): Promise<Result<EntryOutcome, AuthError>> => {
-        const registered = await finish(client.register({ email, ...label }));
+        const registered = await finish(
+          client.register({ ...(email ? { email } : {}), ...label }),
+        );
         if (registered.ok || registered.error.kind !== "email_taken") return registered;
         return ok({ kind: "needs-device-link", email });
       };
 
       // A second press that already knows what it wants skips the key prompt.
-      if (input.create && email) return create();
+      if (input.create) return create();
 
       const signedIn = await finish(client.login(email ? { email } : {}));
       if (signedIn.ok) return signedIn;
 
-      if (signedIn.error.kind === "no_credential")
-        return email ? create() : ok({ kind: "needs-email" });
+      // Nothing to sign in with: this device starts an account. No address is
+      // needed for that — the passkey is the account.
+      if (signedIn.error.kind === "no_credential") return create();
 
       // Dismissed. On Android that is a real refusal; in a browser it is also
-      // what "nothing to offer" looks like, so an address on screen earns an
-      // offer rather than an apology.
-      if (signedIn.error.kind === "cancelled" && email)
-        return ok({ kind: "offer-create", email });
+      // what "nothing to offer" looks like, so the offer to start an account is
+      // made rather than an apology — but it is made, not acted on.
+      if (signedIn.error.kind === "cancelled") return ok({ kind: "offer-create", email });
 
       return signedIn;
     },

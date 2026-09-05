@@ -374,7 +374,7 @@ describe("continueWith — одна дверь", () => {
     expect(s.auth.calls()).not.toContain("register");
   });
 
-  it("без ключа и без адреса просит адрес, а не жалуется", async () => {
+  it("без ключа заводит аккаунт, не спрашивая почту", async () => {
     const auth = fakeAuthClient({
       failures: { login: authError("no_credential", "Ключа нет") },
     });
@@ -382,8 +382,9 @@ describe("continueWith — одна дверь", () => {
 
     const outcome = await s.service.continueWith({});
 
-    expect(outcome).toEqual({ ok: true, value: { kind: "needs-email" } });
-    expect(auth.calls()).not.toContain("register");
+    // Аккаунт — это ключ доступа. Адрес не нужен, чтобы начать.
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    expect(auth.calls()).toEqual(["login", "register", "pull", "push:0"]);
   });
 
   it("без ключа, но с адресом — заводит аккаунт тем же нажатием", async () => {
@@ -430,14 +431,15 @@ describe("continueWith — одна дверь", () => {
     expect(auth.calls()).not.toContain("register");
   });
 
-  it("отказ без адреса остаётся отказом", async () => {
+  it("закрытое окно без адреса тоже предлагает завести аккаунт", async () => {
     const auth = fakeAuthClient({ failures: { login: authError("cancelled", "Вход отменён") } });
     const s = setup({ auth });
 
     expect(await s.service.continueWith({})).toEqual({
-      ok: false,
-      error: { kind: "cancelled", message: "Вход отменён" },
+      ok: true,
+      value: { kind: "offer-create", email: "" },
     });
+    expect(auth.calls()).not.toContain("register");
   });
 
   it("подтверждённое намерение заводит аккаунт без второго системного окна", async () => {

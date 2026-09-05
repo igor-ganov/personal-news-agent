@@ -32,6 +32,7 @@ describe.skipIf(!BASE)("живой API", () => {
   let jobId = "";
   let inviteUrl = "";
   let secondToken = "";
+  let anonymousToken = "";
 
   /** The shape `topicContextOf` produces — what every prompt builder walks. */
   const probeContext = () => {
@@ -329,6 +330,43 @@ describe.skipIf(!BASE)("живой API", () => {
     },
     30_000,
   );
+
+  it("заводит аккаунт вообще без почты — аккаунт это ключ", async () => {
+    const agent = virtualPasskeyAgent({
+      rpId,
+      origin: process.env.PNA_API_ORIGIN ?? `https://${rpId}`,
+    });
+    const anonymous = createAuthClient({ transport, passkeys: agent });
+
+    const session = await anonymous.register({});
+
+    expect(session.ok).toBe(true);
+    if (!session.ok) return;
+    expect(session.value.account.email).toBe("");
+    anonymousToken = session.value.token;
+  });
+
+  it("почту можно добавить потом, и она становится меткой аккаунта", async () => {
+    const later = `later-${Date.now()}@example.test`;
+    const updated = await raw("/auth/email", {
+      method: "PUT",
+      token: anonymousToken,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: later }),
+    });
+
+    expect(updated.status).toBe(200);
+    expect(updated.json.account.email).toBe(later);
+
+    // Занятый адрес остаётся занятым — метка уникальна, как и раньше.
+    const clash = await raw("/auth/email", {
+      method: "PUT",
+      token,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: later }),
+    });
+    expect(clash.status).toBe(409);
+  });
 
   it("выдаёт одноразовую ссылку на добавление устройства", async () => {
     const minted = await raw("/auth/invite", { method: "POST", token });

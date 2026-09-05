@@ -20,6 +20,7 @@ import {
   hitRateLimit,
   insertCredential,
   putChallenge,
+  setAccountEmail,
   revokeSession,
   takeChallenge,
   touchCredential,
@@ -37,50 +38,74 @@ const bearer = (header: string | undefined): string | null =>
 
 export const publicAccount = (row: {
   id: string;
-  email: string;
+  email: string | null;
   email_verified: number;
   display_name: string;
   created_at: string;
 }) => ({
   id: row.id,
-  email: row.email,
+  email: row.email ?? "",
   emailVerified: row.email_verified === 1,
   displayName: row.display_name,
   createdAt: row.created_at,
 });
 
+/**
+ * What the authenticator will show in its list of keys.
+ *
+ * With no address there still has to be something readable, and it has to
+ * differ between accounts — otherwise two keys on one phone look identical.
+ */
+const handleFor = (email: string, accountId: string): string =>
+  email || `агент-${accountId.slice(0, 6)}`;
+
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
 /* ------------------------------------------------------------- register -- */
 
+/**
+ * Starts an account.
+ *
+ * An address is optional and always was optional in spirit: the account is the
+ * passkey. Sent one, it becomes a label — useful for finding the account from
+ * another device — and it is checked for collisions right here. Sent nothing,
+ * the account still gets made, and the address can be attached later.
+ */
 authRoutes.post("/register/options", async (c) => {
   const body = await readJson<{ email?: string }>(c);
   const email = normalise(body?.email ?? "");
-  if (!isPlausibleEmail(email)) return badRequest(c, "Проверьте адрес почты");
+  if (email && !isPlausibleEmail(email)) return badRequest(c, "Проверьте адрес почты");
 
   if (!(await hitRateLimit(c.env, "register", clientIp(c), 20, 3_600_000)))
     return tooManyRequests(c);
 
-  if (await findAccountByEmail(c.env, email))
+  if (email && (await findAccountByEmail(c.env, email)))
     return fail(c, 409, "email_taken", "Такой аккаунт уже есть — войдите по ключу");
 
   // The account id is decided now so the authenticator stores it as the user
   // handle; that is what makes a later passwordless login possible.
   const accountId = randomId();
+  const handle = handleFor(email, accountId);
   const options = await generateRegistrationOptions({
     rpName: c.env.RP_NAME,
     rpID: c.env.RP_ID,
     userID: utf8Bytes(accountId),
-    userName: email,
-    userDisplayName: email,
+    userName: handle,
+    userDisplayName: handle,
     attestationType: "none",
     authenticatorSelection: {
-      residentKey: "preferred",
+      residentKey: "required",
       userVerification: "preferred",
     },
   });
 
-  const challengeId = await putChallenge(c.env, "register", options.challenge, email, accountId);
+  const challengeId = await putChallenge(
+    c.env,
+    "register",
+    options.challenge,
+    email || null,
+    accountId,
+  );
   return c.json({ challengeId, options });
 });
 
@@ -89,7 +114,7 @@ authRoutes.post("/register/verify", async (c) => {
   if (!body?.challengeId || !body.response) return badRequest(c, "Неполный запрос");
 
   const challenge = await takeChallenge(c.env, body.challengeId);
-  if (!challenge || challenge.kind !== "register" || !challenge.email_lower || !challenge.account_id)
+  if (!challenge || challenge.kind !== "register" || !challenge.account_id)
     return fail(c, 400, "challenge_expired", "Попытка устарела, начните заново");
 
   let verification;
@@ -110,8 +135,9 @@ authRoutes.post("/register/verify", async (c) => {
 
   // The window between the check above and this insert is closed by the unique
   // index on email_lower: a duplicate registration fails here rather than
-  // creating a second account for one address.
-  if (await findAccountByEmail(c.env, challenge.email_lower))
+  // creating a second account for one address. With no address there is nothing
+  // to collide with — the passkey is the account.
+  if (challenge.email_lower && (await findAccountByEmail(c.env, challenge.email_lower)))
     return fail(c, 409, "email_taken", "Такой аккаунт уже есть — войдите по ключу");
 
   const account = await createAccount(c.env, challenge.email_lower);
@@ -240,6 +266,30 @@ authRoutes.post("/logout", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Attaches an address to an account that started without one.
+ *
+ * This is the whole of the opt-in: nothing before this point needed it, and
+ * nothing after it depends on it either — it makes the account findable by
+ * address, and that is all.
+ */
+authRoutes.put("/email", async (c) => {
+  const token = bearer(c.req.header("Authorization"));
+  if (!token) return unauthorized(c);
+  const account = await accountForToken(c.env, token);
+  if (!account) return unauthorized(c);
+
+  const body = await readJson<{ email?: string }>(c);
+  const email = normalise(body?.email ?? "");
+  if (!isPlausibleEmail(email)) return badRequest(c, "Проверьте адрес почты");
+
+  if (!(await setAccountEmail(c.env, account.id, email)))
+    return fail(c, 409, "email_taken", "Этот адрес занят другим аккаунтом");
+
+  const updated = await accountForToken(c.env, token);
+  return c.json({ account: publicAccount(updated ?? { ...account, email }) });
+});
+
 authRoutes.delete("/passkeys/:id", async (c) => {
   const token = bearer(c.req.header("Authorization"));
   if (!token) return unauthorized(c);
@@ -304,12 +354,12 @@ authRoutes.post("/invite/options", async (c) => {
     rpName: c.env.RP_NAME,
     rpID: c.env.RP_ID,
     userID: utf8Bytes(account.id),
-    userName: account.email,
-    userDisplayName: account.display_name || account.email,
+    userName: handleFor(account.email ?? "", account.id),
+    userDisplayName: account.display_name || handleFor(account.email ?? "", account.id),
     attestationType: "none",
     excludeCredentials: existing.map((cred) => ({ id: cred.id })),
     authenticatorSelection: {
-      residentKey: "preferred",
+      residentKey: "required",
       userVerification: "preferred",
     },
   });
