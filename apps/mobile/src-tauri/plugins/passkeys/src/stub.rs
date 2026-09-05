@@ -11,7 +11,12 @@ pub fn init<R: Runtime, C: serde::de::DeserializeOwned>(
 
 /// На десктопе ключами владеет сам WebView — плагин здесь только честно
 /// сообщает, что ему нечего предложить, чтобы клиент выбрал браузерный путь.
-pub struct Passkeys<R: Runtime>(std::marker::PhantomData<R>);
+///
+/// `PhantomData<fn() -> R>` вместо `PhantomData<R>`: состояние приложения
+/// требует Send + Sync, а такая форма даёт их независимо от самого R — иначе
+/// крейт не собирается вне Android и его нельзя ни проверить, ни протестировать
+/// на машине разработчика.
+pub struct Passkeys<R: Runtime>(std::marker::PhantomData<fn() -> R>);
 
 impl<R: Runtime> Passkeys<R> {
     pub fn is_available(&self) -> Result<Availability> {

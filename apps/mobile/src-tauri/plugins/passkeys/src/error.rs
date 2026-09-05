@@ -10,6 +10,9 @@ pub enum Error {
     Unsupported,
     #[error("{0}")]
     Cancelled(String),
+    /// Ключа на устройстве нет. Это не отказ пользователя, а развилка.
+    #[error("{0}")]
+    NoCredential(String),
     #[error("{0}")]
     Platform(String),
     #[error(transparent)]

@@ -38,7 +38,9 @@ impl<R: Runtime> Passkeys<R> {
     fn call(&self, command: &str, payload: RequestJson) -> Result<ResponseJson> {
         self.0.run_mobile_plugin(command, payload).map_err(|error| {
             let message = error.to_string();
-            if message.contains("CANCELLED") {
+            if message.contains("NO_CREDENTIAL") {
+                Error::NoCredential(message)
+            } else if message.contains("CANCELLED") {
                 Error::Cancelled(message)
             } else if message.contains("UNSUPPORTED") {
                 Error::Unsupported

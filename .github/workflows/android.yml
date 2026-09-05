@@ -68,6 +68,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      # Плагин ключей доступа — это ещё и контракт между JS, Rust и Kotlin:
+      # поле, которого нет в структуре Rust, теряется молча. Тесты крейта
+      # проверяют именно это, и стоят они секунды.
+      - name: Тесты плагина ключей
+        working-directory: apps/mobile/src-tauri/plugins/passkeys
+        run: cargo test
+
       - name: Сборка APK
         # Раннеры ubuntu уже несут SDK и NDK — ставить их отдельно не нужно.
         # Проект Gradle в репозитории не хранится: он целиком воспроизводится
