@@ -6,6 +6,8 @@ coverage/
 
 # Tauri
 apps/mobile/src-tauri/target/
+# Крейт плагина собирается отдельно — у него свой target.
+apps/mobile/src-tauri/plugins/*/target/
 apps/mobile/src-tauri/gen/
 
 # Cloudflare local state (a local D1 copy lives here)

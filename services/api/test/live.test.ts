@@ -447,6 +447,29 @@ describe.skipIf(!BASE)("живой API", () => {
     expect((seen.json.body as { topics: string[] }).topics).toEqual(["первая"]);
   });
 
+  it("ключ, которого сервер не знает, отвечает отдельным кодом", async () => {
+    // Так выглядит ключ, оставшийся в менеджере паролей от удалённого аккаунта:
+    // приложение должно узнать этот случай и завести новый, а не встать в тупик.
+    const started = await raw("/auth/login/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(started.status).toBe(200);
+
+    const verified = await raw("/auth/login/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        challengeId: started.json.challengeId,
+        response: { id: "ключа-с-таким-идентификатором-нет" },
+      }),
+    });
+
+    expect(verified.status).toBe(401);
+    expect(verified.json.code).toBe("unknown_credential");
+  });
+
   it("гасит сессию при выходе", async () => {
     expect((await client.logout(token)).ok).toBe(true);
     expect((await client.pull(token)).ok === false).toBe(true);

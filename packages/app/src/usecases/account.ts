@@ -263,9 +263,12 @@ export const createAccountService = (deps: AccountDeps) => {
       );
       if (signedIn.ok) return signedIn;
 
-      // Nothing to sign in with: this device starts an account. No address is
-      // needed for that — the passkey is the account.
-      if (signedIn.error.kind === "no_credential") return create();
+      // Nothing usable here. Either the platform had no key at all, or it
+      // offered one the server does not know — a leftover from an account that
+      // no longer exists. For the person holding the phone these are the same
+      // situation, and the answer to both is a new key.
+      if (signedIn.error.kind === "no_credential" || signedIn.error.kind === "unknown_credential")
+        return create();
 
       // Dismissed. On Android that is a real refusal; in a browser it is also
       // what "nothing to offer" looks like, so the offer to start an account is

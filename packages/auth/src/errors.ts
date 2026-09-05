@@ -10,6 +10,12 @@ export type AuthErrorKind =
   | "cancelled"
   /** No passkey for this account on this device — a fork, not a failure. */
   | "no_credential"
+  /**
+   * The device offered a key the server has never seen: a leftover from a
+   * deleted account or another deployment. Unusable, so it means the same
+   * thing as having none.
+   */
+  | "unknown_credential"
   | "unsupported"
   | "invalid"
   | "email_taken"
@@ -41,7 +47,7 @@ const BY_CODE: Readonly<Record<string, AuthErrorKind>> = {
   email_taken: "email_taken",
   unauthorized: "unauthorized",
   verification_failed: "unauthorized",
-  unknown_credential: "unauthorized",
+  unknown_credential: "unknown_credential",
   challenge_expired: "expired",
   rate_limited: "rate_limited",
   last_passkey: "conflict",

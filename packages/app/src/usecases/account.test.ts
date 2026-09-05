@@ -394,6 +394,20 @@ describe("continueWith — одна дверь", () => {
     expect(auth.loginInputs()[0]?.immediate).toBe(false);
   });
 
+  it("ключ от удалённого аккаунта — то же самое, что ключа нет", async () => {
+    const auth = fakeAuthClient({
+      failures: { login: authError("unknown_credential", "Этот ключ не привязан к аккаунту") },
+    });
+    const s = setup({ auth });
+
+    const outcome = await s.service.continueWith({});
+
+    // Менеджер паролей помнит ключ, сервер о нём не знает. Тупика быть не
+    // должно: заводим новый ключ и новый аккаунт.
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    expect(auth.calls()).toContain("register");
+  });
+
   it("без ключа заводит аккаунт, не спрашивая почту", async () => {
     const auth = fakeAuthClient({
       failures: { login: authError("no_credential", "Ключа нет") },
