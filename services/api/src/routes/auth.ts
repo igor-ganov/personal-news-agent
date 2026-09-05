@@ -7,8 +7,11 @@ import {
 import { Hono } from "hono";
 import { fromBase64Url, randomId, toBase64Url, utf8Bytes } from "../crypto.js";
 import {
+  accountForInvite,
   accountForToken,
+  consumeInvite,
   createAccount,
+  createInvite,
   createSession,
   credentialsOfAccount,
   deleteCredential,
@@ -251,4 +254,134 @@ authRoutes.delete("/passkeys/:id", async (c) => {
 
   await deleteCredential(c.env, account.id, c.req.param("id"));
   return c.json({ ok: true });
+});
+
+/* ------------------------------------------------------- adding a device -- */
+
+/**
+ * Mints a one-time link that enrolls another device into this account.
+ *
+ * The account is already proven by the bearer token, so the link is the only
+ * thing the new device needs — and therefore the only thing worth stealing.
+ * It lives ten minutes, works once, and is stored as a hash.
+ */
+authRoutes.post("/invite", async (c) => {
+  const token = bearer(c.req.header("Authorization"));
+  if (!token) return unauthorized(c);
+  const account = await accountForToken(c.env, token);
+  if (!account) return unauthorized(c);
+
+  if (!(await hitRateLimit(c.env, "invite", account.id, 20, 3_600_000)))
+    return tooManyRequests(c);
+
+  const invite = await createInvite(c.env, account.id);
+  const origin = new URL(c.req.url).origin;
+  return c.json({
+    url: `${origin}/enroll#t=${invite.token}`,
+    expiresAt: invite.expiresAt,
+  });
+});
+
+/**
+ * Registration options for a device holding an invite.
+ *
+ * The invite is checked but not spent: a page that is opened and abandoned must
+ * leave the link usable. Existing keys go into `excludeCredentials` so the same
+ * authenticator cannot be enrolled twice.
+ */
+authRoutes.post("/invite/options", async (c) => {
+  const body = await readJson<{ token?: string }>(c);
+  if (!body?.token) return badRequest(c, "Неполный запрос");
+
+  if (!(await hitRateLimit(c.env, "enroll", clientIp(c), 30, 3_600_000)))
+    return tooManyRequests(c);
+
+  const account = await accountForInvite(c.env, body.token);
+  if (!account) return fail(c, 400, "invite_invalid", "Ссылка недействительна или уже использована");
+
+  const existing = await credentialsOfAccount(c.env, account.id);
+  const options = await generateRegistrationOptions({
+    rpName: c.env.RP_NAME,
+    rpID: c.env.RP_ID,
+    userID: utf8Bytes(account.id),
+    userName: account.email,
+    userDisplayName: account.display_name || account.email,
+    attestationType: "none",
+    excludeCredentials: existing.map((cred) => ({ id: cred.id })),
+    authenticatorSelection: {
+      residentKey: "preferred",
+      userVerification: "preferred",
+    },
+  });
+
+  const challengeId = await putChallenge(
+    c.env,
+    "register",
+    options.challenge,
+    account.email_lower,
+    account.id,
+  );
+  return c.json({ challengeId, options });
+});
+
+/**
+ * Finishes enrollment: the key joins the account and the invite is spent.
+ *
+ * Order matters — the invite is consumed only after the ceremony verifies, and
+ * consuming it is what decides the race if the same link is opened twice.
+ */
+authRoutes.post("/invite/verify", async (c) => {
+  const body = await readJson<{
+    token?: string;
+    challengeId?: string;
+    response?: unknown;
+    label?: string;
+  }>(c);
+  if (!body?.token || !body.challengeId || !body.response) return badRequest(c, "Неполный запрос");
+
+  const challenge = await takeChallenge(c.env, body.challengeId);
+  if (!challenge || challenge.kind !== "register" || !challenge.account_id)
+    return fail(c, 400, "challenge_expired", "Попытка устарела, начните заново");
+
+  const account = await accountForInvite(c.env, body.token);
+  if (!account || account.id !== challenge.account_id)
+    return fail(c, 400, "invite_invalid", "Ссылка недействительна или уже использована");
+
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({
+      response: body.response as never,
+      expectedChallenge: challenge.challenge,
+      expectedOrigin: expectedOrigins(c.env),
+      expectedRPID: c.env.RP_ID,
+      requireUserVerification: false,
+    });
+  } catch (error) {
+    return fail(c, 400, "verification_failed", (error as Error).message);
+  }
+
+  if (!verification.verified || !verification.registrationInfo)
+    return fail(c, 400, "verification_failed", "Ключ не подтверждён");
+
+  const spent = await consumeInvite(c.env, body.token);
+  if (spent !== account.id)
+    return fail(c, 400, "invite_invalid", "Ссылка недействительна или уже использована");
+
+  const credential = verification.registrationInfo.credential;
+  await insertCredential(c.env, {
+    id: credential.id,
+    account_id: account.id,
+    public_key: toBase64Url(credential.publicKey),
+    counter: credential.counter,
+    transports: (credential.transports ?? []).join(","),
+    label: (body.label ?? "").slice(0, 60),
+  });
+
+  const session = await createSession(c.env, account.id);
+  return c.json({
+    verified: true,
+    token: session.token,
+    expiresAt: session.expiresAt,
+    account: publicAccount(account),
+  });
 });

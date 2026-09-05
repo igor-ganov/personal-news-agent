@@ -30,6 +30,8 @@ describe.skipIf(!BASE)("живой API", () => {
   let rpId = "";
   let token = "";
   let jobId = "";
+  let inviteUrl = "";
+  let secondToken = "";
 
   /** The shape `topicContextOf` produces — what every prompt builder walks. */
   const probeContext = () => {
@@ -327,6 +329,85 @@ describe.skipIf(!BASE)("живой API", () => {
     },
     30_000,
   );
+
+  it("выдаёт одноразовую ссылку на добавление устройства", async () => {
+    const minted = await raw("/auth/invite", { method: "POST", token });
+
+    expect(minted.status).toBe(200);
+    expect(minted.json.url).toContain("/enroll#t=");
+    expect(minted.json.expiresAt > new Date().toISOString()).toBe(true);
+    inviteUrl = minted.json.url;
+  });
+
+  it("страница добавления открывается и не тянет чужие скрипты", async () => {
+    const page = await fetch(`${BASE}/enroll`);
+    const csp = page.headers.get("content-security-policy") ?? "";
+
+    expect(page.status).toBe(200);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("connect-src 'self'");
+    // Токен живёт во фрагменте: до сервера он не доезжает, значит и в отданной
+    // странице его быть не может — она одна и та же для любой ссылки.
+    const token = new URLSearchParams(new URL(inviteUrl).hash.slice(1)).get("t") ?? "";
+    expect(token.length).toBeGreaterThan(20);
+    expect(await page.text()).not.toContain(token);
+  });
+
+  it("второе устройство заводит по ссылке свой ключ в том же аккаунте", async () => {
+    const second = virtualPasskeyAgent({
+      rpId,
+      origin: process.env.PNA_API_ORIGIN ?? `https://${rpId}`,
+    });
+    const inviteToken = new URLSearchParams(new URL(inviteUrl).hash.slice(1)).get("t") ?? "";
+
+    const started = await raw("/auth/invite/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: inviteToken }),
+    });
+    expect(started.status).toBe(200);
+
+    const created = await second.create(started.json.options);
+
+    const done = await raw("/auth/invite/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: inviteToken,
+        challengeId: started.json.challengeId,
+        response: created,
+        label: "Второе устройство",
+      }),
+    });
+
+    expect(done.status).toBe(200);
+    expect(done.json.account.email).toBe(email);
+    // Ссылка отдаёт и сессию: устройство сразу в аккаунте, без отдельного входа.
+    expect(typeof done.json.token).toBe("string");
+    secondToken = done.json.token;
+
+    const details = await raw("/auth/me", { token: secondToken });
+    expect(details.json.passkeys).toHaveLength(2);
+  });
+
+  it("ссылка срабатывает ровно один раз", async () => {
+    const inviteToken = new URLSearchParams(new URL(inviteUrl).hash.slice(1)).get("t") ?? "";
+    const again = await raw("/auth/invite/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: inviteToken }),
+    });
+
+    expect(again.status).toBe(400);
+    expect(again.json.code).toBe("invite_invalid");
+  });
+
+  it("данные аккаунта видны второму устройству", async () => {
+    const seen = await raw("/state", { token: secondToken });
+
+    expect(seen.status).toBe(200);
+    expect((seen.json.body as { topics: string[] }).topics).toEqual(["первая"]);
+  });
 
   it("гасит сессию при выходе", async () => {
     expect((await client.logout(token)).ok).toBe(true);

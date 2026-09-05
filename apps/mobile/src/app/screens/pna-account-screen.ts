@@ -1,5 +1,5 @@
 import type { PendingClaim } from "@pna/app";
-import type { AuthError } from "@pna/auth";
+import type { AuthError, DeviceInvite } from "@pna/auth";
 import type { Account, ClaimStrategy, Instant, PasskeyRef, Result } from "@pna/core";
 import { css, html } from "lit";
 import { ConnectedElement } from "../context.js";
@@ -31,6 +31,7 @@ export class PnaAccountScreen extends ConnectedElement {
   private declare _pending: PendingClaim | null;
   private declare _syncedAt: Instant | null;
   private declare _supported: boolean;
+  private declare _invite: DeviceInvite | null;
 
   constructor() {
     super();
@@ -41,6 +42,7 @@ export class PnaAccountScreen extends ConnectedElement {
     this._pending = null;
     this._syncedAt = null;
     this._supported = true;
+    this._invite = null;
   }
 
   static override styles = css`
@@ -148,6 +150,23 @@ export class PnaAccountScreen extends ConnectedElement {
     this._busy = false;
   }
 
+  /**
+   * Asks for a one-time link that enrolls another device.
+   *
+   * The link is not stored anywhere: it is shown, scanned or copied, and dies
+   * with the screen — which is what a single-use credential deserves.
+   */
+  private async invite(): Promise<void> {
+    const token = this.service?.current()?.token;
+    if (!token) return;
+
+    const service = this.service;
+    if (!service) return;
+
+    const created = await this.run(() => service.deviceInvite(token));
+    this._invite = created.ok ? created.value : null;
+  }
+
   private async removePasskey(credentialId: string): Promise<void> {
     const service = this.service;
     const token = service?.current()?.token;
@@ -193,11 +212,13 @@ export class PnaAccountScreen extends ConnectedElement {
             ?busy=${this._busy}
             .error=${this._error}
             .syncedAt=${this._syncedAt}
+            .invite=${this._invite}
             @account-register=${(e: CustomEvent<string>) => void this.signIn(e.detail, true)}
             @account-sign-in=${(e: CustomEvent<string>) => void this.signIn(e.detail, false)}
             @account-sync=${() => void this.sync()}
             @account-sign-out=${() => void this.signOut()}
             @passkey-remove=${(e: CustomEvent<string>) => void this.removePasskey(e.detail)}
+            @device-invite=${() => void this.invite()}
           ></pna-account-view>
 
           <p class="note">

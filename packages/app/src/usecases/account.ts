@@ -171,6 +171,9 @@ export const createAccountService = (deps: AccountDeps) => {
 
     removePasskey: (token: string, credentialId: string) => client.removePasskey(token, credentialId),
 
+    /** A one-time link that enrolls another device into this account. */
+    deviceInvite: (token: string) => client.deviceInvite(token),
+
     /** Picks up a session saved on a previous run and loads that account's data. */
     async restore(): Promise<AuthSession | null> {
       const saved = await sessions.load();

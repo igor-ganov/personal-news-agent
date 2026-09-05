@@ -8,6 +8,7 @@ export * from "./adapters/remote-jobs.js";
 export * from "./container.js";
 
 export * from "./usecases/jobs.js";
+export * from "./usecases/sync.js";
 
 export * from "./usecases/topics.js";
 export * from "./usecases/sources.js";

@@ -78,6 +78,14 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
       return ok(null);
     },
 
+    async deviceInvite() {
+      calls.push("deviceInvite");
+      return ok({
+        url: "https://api.test/enroll#t=invite",
+        expiresAt: instantOf("2026-08-22T10:10:00.000Z"),
+      });
+    },
+
     async pull(): Promise<Result<RemoteDocument, AuthError>> {
       calls.push("pull");
       const failure = take("pull");

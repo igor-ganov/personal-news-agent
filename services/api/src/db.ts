@@ -135,7 +135,63 @@ export const pruneExpired = async (env: Env): Promise<void> => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM challenges WHERE expires_at <= ?").bind(now),
     env.DB.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now),
+    env.DB.prepare("DELETE FROM device_invites WHERE expires_at <= ?").bind(now),
   ]);
+};
+
+/* --------------------------------------------------------- device invites -- */
+
+/** Short on purpose: a link that adds a device is a credential in transit. */
+export const INVITE_TTL_MS = 10 * 60_000;
+
+export interface InviteIssue {
+  readonly token: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * Mints a one-time enrollment link for an account.
+ *
+ * Only the hash is stored, exactly as for a session token: the value exists in
+ * the QR code and in the URL the user copies, and nowhere else.
+ */
+export const createInvite = async (env: Env, accountId: string): Promise<InviteIssue> => {
+  const token = randomToken();
+  const expiresAt = plusMs(INVITE_TTL_MS);
+  await env.DB.prepare(
+    `INSERT INTO device_invites (token_hash, account_id, created_at, expires_at)
+     VALUES (?, ?, ?, ?)`,
+  )
+    .bind(await sha256Hex(token), accountId, nowIso(), expiresAt)
+    .run();
+  return { token, expiresAt };
+};
+
+/** The account a live invite belongs to, without spending it. */
+export const accountForInvite = async (env: Env, token: string): Promise<AccountRow | null> => {
+  const row = await env.DB.prepare(
+    `SELECT a.* FROM device_invites i JOIN accounts a ON a.id = i.account_id
+     WHERE i.token_hash = ? AND i.used_at IS NULL AND i.expires_at > ?`,
+  )
+    .bind(await sha256Hex(token), nowIso())
+    .first<AccountRow>();
+  return row;
+};
+
+/**
+ * Spends the invite. The UPDATE is the check, so two devices racing on one link
+ * cannot both enroll — exactly one sees a row come back.
+ */
+export const consumeInvite = async (env: Env, token: string): Promise<string | null> => {
+  const now = nowIso();
+  const row = await env.DB.prepare(
+    `UPDATE device_invites SET used_at = ?1
+     WHERE token_hash = ?2 AND used_at IS NULL AND expires_at > ?1
+     RETURNING account_id`,
+  )
+    .bind(now, await sha256Hex(token))
+    .first<{ account_id: string }>();
+  return row?.account_id ?? null;
 };
 
 /* --------------------------------------------------------------- sessions -- */

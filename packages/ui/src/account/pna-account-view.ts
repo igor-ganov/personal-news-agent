@@ -1,4 +1,4 @@
-import type { Account, PasskeyRef } from "@pna/core";
+import type { Account, Instant, PasskeyRef } from "@pna/core";
 import { css, html, LitElement } from "lit";
 import { emit } from "../events.js";
 import { formatDate, formatDateTime } from "../format/labels.js";
@@ -6,6 +6,7 @@ import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-field.js";
 import "../components/ui-notice.js";
+import "../components/ui-qr.js";
 
 /**
  * The account screen: sign in, see which keys can open this account, sign out.
@@ -21,7 +22,9 @@ export class PnaAccountView extends LitElement {
     busy: { type: Boolean },
     error: { type: String },
     syncedAt: { type: String },
+    invite: { type: Object },
     _email: { state: true },
+    _copied: { state: true },
   };
 
   declare account: Account | null;
@@ -30,7 +33,10 @@ export class PnaAccountView extends LitElement {
   declare busy: boolean;
   declare error: string;
   declare syncedAt: string | null;
+  /** A live link that adds another device, once one has been asked for. */
+  declare invite: { readonly url: string; readonly expiresAt: Instant } | null;
   private declare _email: string;
+  private declare _copied: boolean;
 
   constructor() {
     super();
@@ -40,7 +46,9 @@ export class PnaAccountView extends LitElement {
     this.busy = false;
     this.error = "";
     this.syncedAt = null;
+    this.invite = null;
     this._email = "";
+    this._copied = false;
   }
 
   static override styles = [
@@ -52,6 +60,13 @@ export class PnaAccountView extends LitElement {
 
       section {
         margin-bottom: var(--pna-gap-lg);
+      }
+
+      .link {
+        overflow-wrap: anywhere;
+        font-size: 0.8rem;
+        color: var(--pna-text-dim);
+        margin: var(--pna-gap-sm) 0;
       }
 
       h3 {
@@ -170,6 +185,52 @@ export class PnaAccountView extends LitElement {
     `;
   }
 
+  /**
+   * Adding a device: a link, and the same link as a QR code.
+   *
+   * The other device opens it, creates its own passkey, and from then on signs
+   * into the same account. The link works once, so it is shown in full: it has
+   * to be either scanned or sent to yourself.
+   */
+  private renderInvite() {
+    return html`
+      <section>
+        <h3>Другое устройство</h3>
+        ${this.invite
+          ? html`
+              <ui-qr .value=${this.invite.url} label="Ссылка для нового устройства"></ui-qr>
+              <p class="link">${this.invite.url}</p>
+              <div class="actions">
+                <ui-button
+                  @click=${() => {
+                    void navigator.clipboard?.writeText(this.invite?.url ?? "");
+                    this._copied = true;
+                  }}
+                  >${this._copied ? "Скопировано" : "Скопировать ссылку"}</ui-button
+                >
+                <ui-button variant="ghost" ?disabled=${this.busy} @click=${() =>
+                  emit(this, "device-invite", null)}
+                  >Другая ссылка</ui-button
+                >
+              </div>
+              <p class="hint">
+                Ссылка работает один раз и живёт десять минут — до
+                ${formatDateTime(this.invite.expiresAt)}.
+              </p>
+            `
+          : html`
+              <p class="hint">
+                Откройте ссылку на втором устройстве и создайте там ключ доступа — темы,
+                программы и настройки приедут из аккаунта сами.
+              </p>
+              <ui-button ?disabled=${this.busy} @click=${() => emit(this, "device-invite", null)}
+                >Добавить устройство</ui-button
+              >
+            `}
+      </section>
+    `;
+  }
+
   private renderSignedIn(account: Account) {
     return html`
       <div class="signed-in">
@@ -202,6 +263,8 @@ export class PnaAccountView extends LitElement {
             Последний ключ убрать нельзя: без него в аккаунт будет не войти.
           </p>
         </section>
+
+        ${this.renderInvite()}
       </div>
     `;
   }

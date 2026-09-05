@@ -6,6 +6,7 @@ import { allowedOrigins, type Env } from "./env.js";
 import { pruneJobs } from "./jobs/db.js";
 import { runPending } from "./jobs/runner.js";
 import { authRoutes } from "./routes/auth.js";
+import { enrollRoutes } from "./routes/enroll.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { providerRoutes } from "./routes/provider.js";
 import { stateRoutes } from "./routes/state.js";
@@ -83,6 +84,7 @@ app.get("/.well-known/assetlinks.json", (c) => {
 });
 
 app.route("/auth", authRoutes);
+app.route("/enroll", enrollRoutes);
 app.route("/state", stateRoutes);
 app.route("/jobs", jobRoutes);
 app.route("/provider-key", providerRoutes);

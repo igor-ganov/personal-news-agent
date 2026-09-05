@@ -26,6 +26,12 @@ export interface AuthSession {
   readonly account: Account;
 }
 
+/** A link that adds one more device to the account, and when it stops working. */
+export interface DeviceInvite {
+  readonly url: string;
+  readonly expiresAt: Instant;
+}
+
 export interface AccountDetails {
   readonly account: Account;
   readonly passkeys: readonly PasskeyRef[];
@@ -188,6 +194,25 @@ export const createAuthClient = (options: AuthClientOptions) => {
     async logout(token: string): Promise<Result<null, AuthError>> {
       const response = await transport.request("/auth/logout", { method: "POST", token, body: {} });
       return response.ok ? ok(null) : response;
+    },
+
+    /**
+     * A one-time link that enrolls another device into this account.
+     *
+     * The link carries the invite in its fragment, which is what keeps it out
+     * of server logs and out of the Referer header on the way there.
+     */
+    async deviceInvite(token: string): Promise<Result<DeviceInvite, AuthError>> {
+      const response = await transport.request<{ url?: string; expiresAt?: string }>(
+        "/auth/invite",
+        { method: "POST", token, body: {} },
+      );
+      if (!response.ok) return response;
+
+      const url = response.value.url ?? "";
+      return url
+        ? ok({ url, expiresAt: instantOf(response.value.expiresAt ?? new Date().toISOString()) })
+        : err(authError("server", "Сервер не вернул ссылку"));
     },
 
     async removePasskey(token: string, credentialId: string): Promise<Result<null, AuthError>> {

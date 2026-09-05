@@ -137,6 +137,33 @@ describe("когда вошли", () => {
     expect(text(element)).toContain("Последняя синхронизация");
   });
 
+  it("просит ссылку для второго устройства", async () => {
+    const element = await view({ account, passkeys: [passkey()] });
+    const asked = capture<null>(element, "device-invite");
+
+    const buttons = queryAll<HTMLElement>(element, "ui-button");
+    const add = buttons.find((button) => (button.textContent ?? "").includes("Добавить устройство"));
+    await click(element, add ?? null);
+
+    expect(asked).toHaveLength(1);
+  });
+
+  it("показывает ссылку целиком и её же кодом", async () => {
+    const element = await view({
+      account,
+      passkeys: [passkey()],
+      invite: {
+        url: "https://api.test/enroll#t=secret-token",
+        expiresAt: instantOf("2026-08-22T10:10:00.000Z"),
+      },
+    });
+
+    // Ссылка одноразовая: её показывают и текстом, и кодом — иначе на второе
+    // устройство её не перенести.
+    expect(text(element)).toContain("https://api.test/enroll#t=secret-token");
+    expect(query<HTMLElement>(element, "ui-qr")).not.toBeNull();
+  });
+
   it("пустой список ключей объяснён, а не пуст", async () => {
     const element = await view({ account, passkeys: [] });
     expect(query<HTMLElement>(element, "ui-notice")?.getAttribute("message")).toBe("Ключей пока нет");
