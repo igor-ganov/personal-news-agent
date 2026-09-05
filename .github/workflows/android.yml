@@ -70,10 +70,15 @@ jobs:
 
       # Плагин ключей доступа — это ещё и контракт между JS, Rust и Kotlin:
       # поле, которого нет в структуре Rust, теряется молча. Тесты крейта
-      # проверяют именно это, и стоят они секунды.
+      # проверяют именно это. Собираются они под хост, а Tauri тянет за собой
+      # десктопные библиотеки GTK — для сборки APK они не нужны, но без них
+      # крейт под Linux не компилируется.
       - name: Тесты плагина ключей
         working-directory: apps/mobile/src-tauri/plugins/passkeys
-        run: cargo test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+          cargo test
 
       - name: Сборка APK
         # Раннеры ubuntu уже несут SDK и NDK — ставить их отдельно не нужно.
