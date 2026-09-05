@@ -8,6 +8,8 @@
 export type AuthErrorKind =
   | "network"
   | "cancelled"
+  /** No passkey for this account on this device — a fork, not a failure. */
+  | "no_credential"
   | "unsupported"
   | "invalid"
   | "email_taken"
@@ -74,6 +76,10 @@ export const errorFromResponse = (
 export const errorFromPasskeyFailure = (error: unknown): AuthError => {
   const name = (error as { name?: string } | null)?.name ?? "";
   const message = (error as Error | null)?.message ?? "Не удалось использовать ключ";
+  // The platform said there is nothing to sign in with. That is where a new
+  // device starts, so it must not read as a refusal.
+  if (name === "NotFoundError")
+    return authError("no_credential", "На этом устройстве нет ключа от этого аккаунта");
   if (name === "NotAllowedError" || name === "AbortError")
     return authError("cancelled", "Вход отменён");
   if (name === "NotSupportedError" || name === "SecurityError")

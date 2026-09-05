@@ -362,3 +362,114 @@ describe("два аккаунта на одном устройстве", () => {
     expect(kept.ok && kept.value && titles(kept.value)).toEqual(["t_first"]);
   });
 });
+
+describe("continueWith — одна дверь", () => {
+  it("входит ключом, который уже есть на устройстве", async () => {
+    const s = setup();
+    const outcome = await s.service.continueWith({});
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    // Адрес не спрашивали: ключ на устройстве сам сказал, чей он.
+    expect(s.auth.calls()).toContain("login");
+    expect(s.auth.calls()).not.toContain("register");
+  });
+
+  it("без ключа и без адреса просит адрес, а не жалуется", async () => {
+    const auth = fakeAuthClient({
+      failures: { login: authError("no_credential", "Ключа нет") },
+    });
+    const s = setup({ auth });
+
+    const outcome = await s.service.continueWith({});
+
+    expect(outcome).toEqual({ ok: true, value: { kind: "needs-email" } });
+    expect(auth.calls()).not.toContain("register");
+  });
+
+  it("без ключа, но с адресом — заводит аккаунт тем же нажатием", async () => {
+    const auth = fakeAuthClient({
+      failures: { login: authError("no_credential", "Ключа нет") },
+    });
+    const s = setup({ auth });
+
+    const outcome = await s.service.continueWith({ email: "reader@example.com" });
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    expect(auth.calls()).toEqual(["login", "register", "pull", "push:0"]);
+  });
+
+  it("чужой адрес не отдаёт аккаунт, а объясняет, как подключить устройство", async () => {
+    const auth = fakeAuthClient({
+      failures: {
+        login: authError("no_credential", "Ключа нет"),
+        register: authError("email_taken", "Такой аккаунт уже есть"),
+      },
+    });
+    const s = setup({ auth });
+
+    const outcome = await s.service.continueWith({ email: "reader@example.com" });
+
+    expect(outcome).toEqual({
+      ok: true,
+      value: { kind: "needs-device-link", email: "reader@example.com" },
+    });
+  });
+
+  it("закрытое окно не заводит аккаунт молча, а предлагает", async () => {
+    const auth = fakeAuthClient({ failures: { login: authError("cancelled", "Вход отменён") } });
+    const s = setup({ auth });
+
+    const outcome = await s.service.continueWith({ email: "reader@example.com" });
+
+    // Браузер не умеет сказать «ключа нет» — он говорит то же, что и при отказе.
+    // Поэтому решение оставляем пользователю, а не додумываем за него.
+    expect(outcome).toEqual({
+      ok: true,
+      value: { kind: "offer-create", email: "reader@example.com" },
+    });
+    expect(auth.calls()).not.toContain("register");
+  });
+
+  it("отказ без адреса остаётся отказом", async () => {
+    const auth = fakeAuthClient({ failures: { login: authError("cancelled", "Вход отменён") } });
+    const s = setup({ auth });
+
+    expect(await s.service.continueWith({})).toEqual({
+      ok: false,
+      error: { kind: "cancelled", message: "Вход отменён" },
+    });
+  });
+
+  it("подтверждённое намерение заводит аккаунт без второго системного окна", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+
+    const outcome = await s.service.continueWith({ email: "reader@example.com", create: true });
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    // Спрашивать ключ незачем: пользователь уже сказал, чего хочет.
+    expect(auth.calls()).not.toContain("login");
+  });
+
+  it("данные с устройства не пропадают: их судьбу решает пользователь", async () => {
+    const auth = fakeAuthClient({
+      failures: { login: authError("no_credential", "Ключа нет") },
+    });
+    auth.setDocument(stateWith("серверная"), 3);
+    const s = setup({ local: stateWith("местная"), auth });
+    // Данные устройства живут в его документе — оттуда их и берёт вход.
+    await s.repository.of(LOCAL_OWNER).save(stateWith("местная"));
+
+    const outcome = await s.service.continueWith({ email: "reader@example.com" });
+    expect(outcome.ok && outcome.value.kind).toBe("needs-choice");
+    if (!outcome.ok || outcome.value.kind !== "needs-choice") return;
+
+    // Обе стороны показаны целиком — выбор делается зная, что именно потеряется.
+    expect(titles(outcome.value.pending.local)).toEqual(["местная"]);
+    expect(titles(outcome.value.pending.account)).toEqual(["серверная"]);
+
+    const applied = await s.service.resolveClaim(outcome.value.pending, "merge");
+    expect(applied.ok).toBe(true);
+    expect(titles(s.state())).toEqual(["местная", "серверная"]);
+  });
+});

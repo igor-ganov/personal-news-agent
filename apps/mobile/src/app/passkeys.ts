@@ -24,15 +24,22 @@ const invokeTauri = async <T>(command: string, payload?: unknown): Promise<T> =>
   return invoke<T>(command, payload as Record<string, unknown>);
 };
 
-/** Отмену интерфейс показывает иначе, чем сбой, поэтому имя ошибки важно. */
+/**
+ * Отмену, отсутствие ключа и поломку интерфейс показывает по-разному, поэтому
+ * имя ошибки важно: по нему приложение решает, извиниться или предложить завести
+ * аккаунт.
+ */
+const ERROR_NAMES: readonly (readonly [string, string])[] = [
+  ["NO_CREDENTIAL", "NotFoundError"],
+  ["CANCELLED", "NotAllowedError"],
+  ["UNSUPPORTED", "NotSupportedError"],
+  ["недоступны", "NotSupportedError"],
+];
+
 const asDomLikeError = (error: unknown): never => {
   const message = String((error as Error)?.message ?? error ?? "");
   const named = new Error(message);
-  named.name = message.includes("CANCELLED")
-    ? "NotAllowedError"
-    : message.includes("UNSUPPORTED") || message.includes("недоступны")
-      ? "NotSupportedError"
-      : "UnknownError";
+  named.name = ERROR_NAMES.find(([marker]) => message.includes(marker))?.[1] ?? "UnknownError";
   throw named;
 };
 

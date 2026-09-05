@@ -23,6 +23,9 @@ export class PnaAccountView extends LitElement {
     error: { type: String },
     syncedAt: { type: String },
     invite: { type: Object },
+    notice: { type: String },
+    linkFor: { type: String },
+    offerCreate: { type: String },
     _email: { state: true },
     _copied: { state: true },
   };
@@ -35,6 +38,12 @@ export class PnaAccountView extends LitElement {
   declare syncedAt: string | null;
   /** A live link that adds another device, once one has been asked for. */
   declare invite: { readonly url: string; readonly expiresAt: Instant } | null;
+  /** A sentence the last attempt earned — «введите почту», and the like. */
+  declare notice: string;
+  /** Set when the account exists but this device holds no key for it. */
+  declare linkFor: string | null;
+  /** Set when the key prompt was dismissed and an account could be made instead. */
+  declare offerCreate: string | null;
   private declare _email: string;
   private declare _copied: boolean;
 
@@ -47,6 +56,9 @@ export class PnaAccountView extends LitElement {
     this.error = "";
     this.syncedAt = null;
     this.invite = null;
+    this.notice = "";
+    this.linkFor = null;
+    this.offerCreate = null;
     this._email = "";
     this._copied = false;
   }
@@ -110,6 +122,15 @@ export class PnaAccountView extends LitElement {
       .email {
         font-family: var(--pna-mono);
       }
+
+      ul.hint {
+        margin: 0 0 var(--pna-gap-sm);
+        padding-left: 1.1rem;
+      }
+
+      ul.hint li {
+        margin-bottom: 4px;
+      }
     `,
   ];
 
@@ -120,8 +141,8 @@ export class PnaAccountView extends LitElement {
           <h3>Вход без пароля</h3>
           <p class="hint">
             Пароля здесь нет. Вместо него — ключ доступа: он остаётся на устройстве и
-            подтверждается тем же способом, что и разблокировка экрана. Почта нужна только
-            чтобы узнать аккаунт на другом устройстве.
+            подтверждается тем же способом, что и разблокировка экрана. Одна кнопка на всё:
+            если ключ на устройстве есть — вход, если нет — заведём аккаунт на указанную почту.
           </p>
           ${this.supported
             ? null
@@ -140,18 +161,64 @@ export class PnaAccountView extends LitElement {
             <ui-button
               variant="primary"
               ?disabled=${this.busy || !this.supported}
-              @click=${() => emit<string>(this, "account-register", this._email.trim())}
-              >Создать аккаунт</ui-button
-            >
-            <ui-button
-              ?disabled=${this.busy || !this.supported}
-              @click=${() => emit<string>(this, "account-sign-in", this._email.trim())}
-              >Войти по ключу</ui-button
+              @click=${() => emit<string>(this, "account-continue", this._email.trim())}
+              >Продолжить</ui-button
             >
           </div>
+          ${this.notice ? html`<ui-notice tone="info" message=${this.notice}></ui-notice>` : null}
+          ${this.offerCreate ? this.renderOffer(this.offerCreate) : null}
+          ${this.linkFor ? this.renderDeviceLink(this.linkFor) : null}
           ${this.error ? html`<ui-notice tone="error" message=${this.error}></ui-notice>` : null}
         </section>
       </div>
+    `;
+  }
+
+  /**
+   * Asking instead of guessing after a dismissed prompt: the address is right
+   * there, so one tap either creates the account or lets it be.
+   */
+  private renderOffer(email: string) {
+    return html`
+      <ui-notice
+        tone="info"
+        message="Ключ не подошёл или окно закрыли. Если аккаунта ещё нет — заведём."
+      ></ui-notice>
+      <div class="actions">
+        <ui-button
+          variant="primary"
+          ?disabled=${this.busy}
+          @click=${() => emit<string>(this, "account-create", email)}
+          >Завести аккаунт на ${email}</ui-button
+        >
+      </div>
+    `;
+  }
+
+  /**
+   * The one case a single button cannot resolve on its own: the address belongs
+   * to an account, and this device has no key for it. Both ways out need the
+   * device that does have one, so both are spelled out rather than hinted at.
+   */
+  private renderDeviceLink(email: string) {
+    return html`
+      <ui-notice
+        tone="info"
+        message=${`Аккаунт ${email} уже есть, но ключа от него на этом устройстве нет.`}
+      ></ui-notice>
+      <p class="hint">
+        Подключить это устройство можно двумя способами:
+      </p>
+      <ul class="hint">
+        <li>
+          на устройстве, где вход уже работает, откройте «Аккаунт» → «Добавить устройство»
+          и отсканируйте отсюда QR-код;
+        </li>
+        <li>
+          либо нажмите «Продолжить» ещё раз и выберите в системном окне «Ключ с другого
+          устройства» — телефон с ключом подтвердит вход по QR-коду.
+        </li>
+      </ul>
     `;
   }
 

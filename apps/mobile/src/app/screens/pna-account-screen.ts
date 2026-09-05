@@ -21,6 +21,10 @@ export class PnaAccountScreen extends ConnectedElement {
     _account: { state: true },
     _passkeys: { state: true },
     _pending: { state: true },
+    _invite: { state: true },
+    _notice: { state: true },
+    _linkFor: { state: true },
+    _offerCreate: { state: true },
     _syncedAt: { state: true },
   };
 
@@ -32,6 +36,9 @@ export class PnaAccountScreen extends ConnectedElement {
   private declare _syncedAt: Instant | null;
   private declare _supported: boolean;
   private declare _invite: DeviceInvite | null;
+  private declare _notice: string;
+  private declare _linkFor: string | null;
+  private declare _offerCreate: string | null;
 
   constructor() {
     super();
@@ -43,6 +50,9 @@ export class PnaAccountScreen extends ConnectedElement {
     this._syncedAt = null;
     this._supported = true;
     this._invite = null;
+    this._notice = "";
+    this._linkFor = null;
+    this._offerCreate = null;
   }
 
   static override styles = css`
@@ -102,14 +112,41 @@ export class PnaAccountScreen extends ConnectedElement {
     }
   }
 
-  private async signIn(email: string, register: boolean): Promise<void> {
+  /**
+   * The single door.
+   *
+   * Everything the user does here is one press; which of the four things it
+   * turns into — a sign-in, a fresh account, a request for an address, or an
+   * explanation that this device has to be linked — is decided below, not by
+   * making them pick a button first.
+   */
+  private async signIn(email: string, create = false): Promise<void> {
     const service = this.service;
     if (!service) return;
 
+    this._notice = "";
+    this._linkFor = null;
+    this._offerCreate = null;
+
     const outcome = await this.run(() =>
-      register ? service.register({ email, label: deviceLabel() }) : service.signIn({ email }),
+      service.continueWith({ email, label: deviceLabel(), create }),
     );
     if (!outcome.ok) return;
+
+    if (outcome.value.kind === "needs-email") {
+      this._notice = "Укажите почту — по ней узнаем аккаунт или заведём новый";
+      return;
+    }
+
+    if (outcome.value.kind === "needs-device-link") {
+      this._linkFor = outcome.value.email;
+      return;
+    }
+
+    if (outcome.value.kind === "offer-create") {
+      this._offerCreate = outcome.value.email;
+      return;
+    }
 
     if (outcome.value.kind === "needs-choice") {
       this._pending = outcome.value.pending;
@@ -213,8 +250,11 @@ export class PnaAccountScreen extends ConnectedElement {
             .error=${this._error}
             .syncedAt=${this._syncedAt}
             .invite=${this._invite}
-            @account-register=${(e: CustomEvent<string>) => void this.signIn(e.detail, true)}
-            @account-sign-in=${(e: CustomEvent<string>) => void this.signIn(e.detail, false)}
+            .notice=${this._notice}
+            .linkFor=${this._linkFor}
+            .offerCreate=${this._offerCreate}
+            @account-continue=${(e: CustomEvent<string>) => void this.signIn(e.detail)}
+            @account-create=${(e: CustomEvent<string>) => void this.signIn(e.detail, true)}
             @account-sync=${() => void this.sync()}
             @account-sign-out=${() => void this.signOut()}
             @passkey-remove=${(e: CustomEvent<string>) => void this.removePasskey(e.detail)}

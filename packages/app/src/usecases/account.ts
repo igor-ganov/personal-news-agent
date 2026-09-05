@@ -44,6 +44,31 @@ export type SignInOutcome =
   | { readonly kind: "signed-in"; readonly session: AuthSession }
   | { readonly kind: "needs-choice"; readonly pending: PendingClaim };
 
+/**
+ * What the single door can answer.
+ *
+ * Signing in and signing up are the same act for the user: they press one
+ * button, and the difference — is there a key on this device, is there already
+ * an account behind that address — is the app's problem, not theirs. The two
+ * extra outcomes are the only cases where the app genuinely needs something
+ * back: an address, or a way to prove this device belongs to an account that
+ * already exists elsewhere.
+ */
+export type EntryOutcome =
+  | SignInOutcome
+  /** No key here and no address given — nothing identifies the account yet. */
+  | { readonly kind: "needs-email" }
+  /** The account exists, but this device has no key for it. */
+  | { readonly kind: "needs-device-link"; readonly email: string }
+  /**
+   * The prompt was dismissed with an address on screen.
+   *
+   * A browser cannot say "there was nothing to offer" — it reports a dismissal
+   * either way — so the app asks instead of guessing: creating an account
+   * behind a user who just cancelled would be worse than one more tap.
+   */
+  | { readonly kind: "offer-create"; readonly email: string };
+
 export type SyncOutcome =
   | { readonly kind: "synced"; readonly revision: number }
   /** Signed out — there is nothing to sync with, and that is not a failure. */
@@ -193,6 +218,45 @@ export const createAccountService = (deps: AccountDeps) => {
     register: (input: { email: string; label?: string }) => finish(client.register(input)),
 
     signIn: (input: { email?: string | null } = {}) => finish(client.login(input)),
+
+    /**
+     * One way in.
+     *
+     * The key already on the device is tried first — that covers every return
+     * visit and needs no address at all. Only when the platform reports that
+     * there is nothing to sign in with does the address matter, and then the
+     * same press either creates the account or explains that this device has to
+     * be linked from the one that already has a key.
+     */
+    async continueWith(
+      input: { email?: string; label?: string; create?: boolean } = {},
+    ): Promise<Result<EntryOutcome, AuthError>> {
+      const email = (input.email ?? "").trim();
+      const label = input.label ? { label: input.label } : {};
+
+      const create = async (): Promise<Result<EntryOutcome, AuthError>> => {
+        const registered = await finish(client.register({ email, ...label }));
+        if (registered.ok || registered.error.kind !== "email_taken") return registered;
+        return ok({ kind: "needs-device-link", email });
+      };
+
+      // A second press that already knows what it wants skips the key prompt.
+      if (input.create && email) return create();
+
+      const signedIn = await finish(client.login(email ? { email } : {}));
+      if (signedIn.ok) return signedIn;
+
+      if (signedIn.error.kind === "no_credential")
+        return email ? create() : ok({ kind: "needs-email" });
+
+      // Dismissed. On Android that is a real refusal; in a browser it is also
+      // what "nothing to offer" looks like, so an address on screen earns an
+      // offer rather than an apology.
+      if (signedIn.error.kind === "cancelled" && email)
+        return ok({ kind: "offer-create", email });
+
+      return signedIn;
+    },
 
     /** Answers the question `needs-choice` asked. */
     resolveClaim: (pending: PendingClaim, strategy: ClaimStrategy) => apply(pending, strategy),

@@ -33,26 +33,51 @@ describe("когда не вошли", () => {
     expect(text(element)).toContain("Пароля здесь нет");
   });
 
-  it("сообщает адрес по запросу на регистрацию", async () => {
+  it("одна кнопка на вход и на регистрацию", async () => {
     const element = await view();
-    const events = capture<string>(element, "account-register");
+    const events = capture<string>(element, "account-continue");
 
     query<HTMLElement>(element, "ui-field")?.dispatchEvent(
       new CustomEvent("field-input", { detail: " reader@example.com ", bubbles: true, composed: true }),
     );
     await element.updateComplete;
+
+    const buttons = queryAll<HTMLElement>(element, "ui-button");
+    expect(buttons).toHaveLength(1);
+
+    await click(element, buttons[0] ?? null);
+    expect(events).toEqual(["reader@example.com"]);
+  });
+
+  it("работает и без адреса — ключ на устройстве сам скажет, кто это", async () => {
+    const element = await view();
+    const events = capture<string>(element, "account-continue");
+
     await click(element, queryAll(element, "ui-button")[0] ?? null);
+
+    expect(events).toEqual([""]);
+  });
+
+  it("после закрытого окна предлагает завести аккаунт, а не молчит", async () => {
+    const element = await view({ offerCreate: "reader@example.com" });
+    const events = capture<string>(element, "account-create");
+
+    const buttons = queryAll<HTMLElement>(element, "ui-button");
+    const create = buttons.find((button) => (button.textContent ?? "").includes("Завести аккаунт"));
+    await click(element, create ?? null);
 
     expect(events).toEqual(["reader@example.com"]);
   });
 
-  it("вход по ключу — отдельное событие", async () => {
-    const element = await view();
-    const events = capture<string>(element, "account-sign-in");
+  it("объясняет, что делать, если аккаунт есть, а ключа тут нет", async () => {
+    const element = await view({ linkFor: "reader@example.com" });
 
-    await click(element, queryAll(element, "ui-button")[1] ?? null);
-
-    expect(events).toHaveLength(1);
+    // Адрес живёт в сообщении заметки, а способы подключения — в самом тексте.
+    expect(query<HTMLElement>(element, "ui-notice")?.getAttribute("message")).toContain(
+      "reader@example.com",
+    );
+    expect(text(element)).toContain("Добавить устройство");
+    expect(text(element)).toContain("Ключ с другого устройства");
   });
 
   it("на устройстве без ключей предупреждает и не даёт нажать", async () => {

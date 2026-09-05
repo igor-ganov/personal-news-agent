@@ -88,10 +88,10 @@ class PasskeysPlugin(private val activity: Activity) : Plugin(activity) {
             } catch (error: GetCredentialCancellationException) {
                 invoke.reject("CANCELLED: ${error.message ?: "отменено"}")
             } catch (error: NoCredentialException) {
-                // Нет подходящего ключа — для пользователя это то же самое, что
-                // отказаться от диалога: он остаётся не вошедшим и может выбрать
-                // другой способ.
-                invoke.reject("CANCELLED: подходящего ключа на устройстве нет")
+                // Ключа на этом устройстве нет — это не отказ пользователя, а
+                // другая развилка: приложению нужно предложить завести аккаунт
+                // или подключить устройство, а не говорить «вход отменён».
+                invoke.reject("NO_CREDENTIAL: подходящего ключа на устройстве нет")
             } catch (error: GetCredentialException) {
                 invoke.reject(error.message ?: error.type)
             }
