@@ -1,6 +1,6 @@
 [package]
 name = "personal-news-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Личный агент: выжимки по источникам и программы обучения"
 authors = ["Igor Ganov"]
 edition = "2021"
