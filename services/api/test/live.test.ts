@@ -74,12 +74,13 @@ describe.skipIf(!BASE)("живой API", () => {
     id: string,
     done: (job: LiveJob) => boolean,
     attempts = 20,
+    everyMs = 250,
   ): Promise<LiveJob | null> => {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       const response = await raw(`/jobs/${id}`, { token });
       const job = response.json?.job as LiveJob | undefined;
       if (job && done(job)) return job;
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, everyMs));
     }
     return null;
   };
@@ -228,9 +229,12 @@ describe.skipIf(!BASE)("живой API", () => {
     expect(submitted.json.job.status).toBe("queued");
     jobId = submitted.json.job.id;
 
-    // Постановка отвечает сразу, генерация идёт после ответа.
-    const listed = await pollJob(jobId, (job) => job.status !== "queued");
-    expect(["failed", "running"]).toContain(listed?.status);
+    // Постановка отвечает сразу и ничего не выполняет: работой занимается крон,
+    // потому что продолжение ответа живёт всего тридцать секунд, а генерация —
+    // минуты. Что задание доводится до конца, проверяет отдельный тест.
+    const listed = await raw(`/jobs/${jobId}`, { token });
+    expect(listed.json.job.id).toBe(jobId);
+    expect(["queued", "running", "failed"]).toContain(listed.json.job.status);
   });
 
   it("не берётся за неизвестный вид задания", async () => {
@@ -469,6 +473,53 @@ describe.skipIf(!BASE)("живой API", () => {
     expect(verified.status).toBe(401);
     expect(verified.json.code).toBe("unknown_credential");
   });
+
+  /**
+   * Главный конвейер целиком: задание, поставленное в очередь, должно быть
+   * выполнено сервером само — без открытого приложения и без чужой помощи.
+   * Проверка ждёт крон, поэтому включается отдельно: PNA_LIVE_CRON=1.
+   */
+  it.skipIf(process.env.PNA_LIVE_CRON !== "1")(
+    "поставленное задание выполняется сервером само, а не висит",
+    async () => {
+      const submitted = await raw("/jobs", {
+        method: "POST",
+        token,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: `sources:cron-${Date.now()}`,
+          kind: "sources",
+          input: {
+            context: probeContext(),
+            known: [],
+            blockedHosts: [],
+            limit: 3,
+            now: new Date().toISOString(),
+          },
+          meta: { topicId: "topic_probe" },
+        }),
+      });
+      expect(submitted.status).toBe(202);
+      expect(submitted.json.job.status).toBe("queued");
+
+      const startedAt = Date.now();
+      const finished = await pollJob(
+        submitted.json.job.id,
+        (job) => job.status === "done" || job.status === "failed",
+        150,
+        1_000,
+      );
+      const seconds = Math.round((Date.now() - startedAt) / 1000);
+
+      // У этого аккаунта ключа API нет, поэтому ответом будет внятная ошибка —
+      // но она обязана приехать сама и быстро, а не через полчаса.
+      expect(finished?.status).toBe("failed");
+      expect(finished?.error?.message).toContain("ключа API");
+      expect(seconds).toBeLessThan(120);
+      await raw(`/jobs/${submitted.json.job.id}`, { method: "DELETE", token });
+    },
+    180_000,
+  );
 
   it("гасит сессию при выходе", async () => {
     expect((await client.logout(token)).ok).toBe(true);

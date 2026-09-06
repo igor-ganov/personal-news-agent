@@ -363,6 +363,20 @@ describe("два аккаунта на одном устройстве", () => {
   });
 });
 
+describe("данные приезжают из аккаунта", () => {
+  it("устройство без своей копии получает всё при первой же синхронизации", async () => {
+    // Так выглядит переустановка или второй телефон: сессия есть, локального
+    // документа нет. Пустой экран здесь неотличим от потери данных.
+    const auth = fakeAuthClient();
+    auth.setDocument(stateWith("инференс"), 4);
+    const s = setup({ auth });
+
+    await s.service.signIn({ email: "reader@example.com" });
+    expect(titles(s.state())).toEqual(["инференс"]);
+  });
+
+});
+
 describe("continueWith — одна дверь", () => {
   it("входит ключом, который уже есть на устройстве", async () => {
     const s = setup();

@@ -24,8 +24,17 @@ export interface JobRow {
 
 const nowIso = (): string => new Date().toISOString();
 
-/** How long a job may sit in `running` before it is assumed dead and retried. */
-export const STALE_AFTER_MS = 20 * 60_000;
+/**
+ * How long a job may sit in `running` before it is assumed dead.
+ *
+ * Only the cron runs jobs, and a cron invocation gets fifteen minutes of wall
+ * clock; anything still marked running after sixteen was killed mid-flight.
+ * The number used to be twenty minutes and covered a different, self-inflicted
+ * case: work started in `waitUntil`, which the platform kills thirty seconds
+ * after the response — so every generation died and then waited out the whole
+ * stale window before anyone retried it.
+ */
+export const STALE_AFTER_MS = 16 * 60_000;
 
 /** A job is retried this many times before its failure is reported to the app. */
 export const MAX_ATTEMPTS = 3;
@@ -196,17 +205,24 @@ export const pendingJobs = async (env: Env, limit = 10): Promise<JobRow[]> => {
   return results ?? [];
 };
 
-/** Jobs for one account that nobody is running — what a returning device revives. */
-export const pendingJobsOfAccount = async (env: Env, accountId: string): Promise<JobRow[]> => {
+/**
+ * Ends jobs that will not end by themselves.
+ *
+ * A run killed mid-flight leaves the row claimed and silent. After the attempts
+ * are spent, silence is the worst possible answer: the app shows a spinner that
+ * never stops. This turns it into a sentence the user can read.
+ */
+export const failStuckJobs = async (env: Env): Promise<number> => {
   const stale = new Date(Date.now() - STALE_AFTER_MS).toISOString();
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM jobs WHERE account_id = ?
-       AND (status = 'queued' OR (status = 'running' AND started_at <= ?))
-     ORDER BY created_at LIMIT ?`,
+  const result = await env.DB.prepare(
+    `UPDATE jobs SET status = 'failed', error_kind = 'timeout',
+       error_message = 'Генерация не уложилась во время и была остановлена',
+       finished_at = ?1, updated_at = ?1
+     WHERE status = 'running' AND started_at <= ?2 AND attempts >= ?3`,
   )
-    .bind(accountId, stale, LIST_LIMIT)
-    .all<JobRow>();
-  return results ?? [];
+    .bind(new Date().toISOString(), stale, MAX_ATTEMPTS)
+    .run();
+  return result.meta.changes ?? 0;
 };
 
 export const pruneJobs = async (env: Env): Promise<void> => {

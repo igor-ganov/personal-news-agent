@@ -21,7 +21,8 @@ binding = "DB"
 database_name = "pna"
 database_id = "774adde6-a754-468e-b1d3-ddf7d5f4f3fb"
 
-# Every five minutes: pick up generation whose invocation died. Daily at 03:00:
-# expire challenges and sessions, drop long-finished jobs.
+# Каждую минуту: выполнить задания на генерацию. Это единственное место, где
+# они выполняются — у крона пятнадцать минут на вызов, а у продолжения ответа
+# всего тридцать секунд. Ночью тот же обработчик подчищает просроченные строки.
 [triggers]
-crons = ["*/5 * * * *", "0 3 * * *"]
+crons = ["* * * * *", "0 3 * * *"]

@@ -74,8 +74,18 @@ export const startAutoSync = (ctx: AppContext, options: AutoSyncOptions = {}): (
   };
 };
 
-/** Pulls and pushes now — what returning to the app does. */
-export const syncNow = async (ctx: AppContext): Promise<void> => {
+/**
+ * Pulls and pushes now — what returning to the app does, and what the first
+ * screen waits for.
+ *
+ * It reports the outcome instead of swallowing it: an app that shows an empty
+ * list because the account could not be reached looks exactly like an app that
+ * lost the data, and that is the one impression worth spending a banner on.
+ */
+export const syncNow = async (ctx: AppContext): Promise<"offline" | "synced" | string> => {
   const service = ctx.deps.account;
-  if (service?.current()) await service.sync();
+  if (!service?.current()) return "offline";
+
+  const result = await service.sync();
+  return result.ok ? "synced" : result.error.message;
 };

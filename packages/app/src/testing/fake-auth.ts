@@ -19,6 +19,8 @@ export interface FakeAuth {
   setDocument(body: unknown, revision?: number): void;
   /** Every call the service made, in order. */
   calls(): readonly string[];
+  /** Arms a failure for the next call of that name — once. */
+  setFailure(name: "register" | "login" | "pull" | "push", error: AuthError): void;
   /** What each login was asked for — the silent probe is a flag on the input. */
   loginInputs(): readonly { readonly email?: string | null; readonly immediate?: boolean }[];
   session(): AuthSession;
@@ -128,6 +130,9 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
       document = { revision, updatedAt: instantOf("2026-08-20T10:00:00.000Z"), body };
     },
     calls: () => calls,
+    setFailure(name, error) {
+      pending[name] = error;
+    },
     loginInputs: () => logins,
   };
 };

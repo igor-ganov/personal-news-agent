@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { harness } from "../testing/harness.js";
 import { fakeAuthClient } from "../testing/fake-auth.js";
 import { createAccountService } from "./account.js";
-import { startAutoSync } from "./sync.js";
+import { startAutoSync, syncNow } from "./sync.js";
 import { addTopic } from "./topics.js";
 import { createOwnedRepository, memoryStore } from "@pna/storage";
 import { createSessionStore } from "@pna/auth";
@@ -102,5 +102,26 @@ describe("startAutoSync", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("syncNow", () => {
+  it("докладывает, что синхронизация прошла", async () => {
+    const { ctx } = await signedIn();
+    expect(await syncNow(ctx)).toBe("synced");
+  });
+
+  it("без аккаунта просто говорит, что синхронизировать не с чем", async () => {
+    const { ctx } = harness();
+    expect(await syncNow(ctx)).toBe("offline");
+  });
+
+  it("возвращает причину неудачи, а не молчит", async () => {
+    const { ctx, auth } = await signedIn();
+    auth.setFailure("pull", { kind: "network", message: "Сервер недоступен" });
+
+    // Пустой экран у вошедшего пользователя неотличим от потери данных —
+    // приложению нужна причина, чтобы её показать.
+    expect(await syncNow(ctx)).toBe("Сервер недоступен");
   });
 });

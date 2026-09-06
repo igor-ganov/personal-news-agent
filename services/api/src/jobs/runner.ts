@@ -12,7 +12,6 @@ import {
   completeJob,
   failJob,
   pendingJobs,
-  pendingJobsOfAccount,
   providerCredentials,
   type JobRow,
 } from "./db.js";
@@ -84,20 +83,20 @@ export const runJob = async (env: Env, row: JobRow): Promise<void> => {
   }
 };
 
-/** Picks up whatever nobody is running. Used by the cron sweep. */
-export const runPending = async (env: Env, limit = 5): Promise<void> => {
-  const rows = await pendingJobs(env, limit);
-  for (const row of rows) await runJob(env, row);
-};
-
 /**
- * Revives an account's own stalled work.
+ * Picks up whatever nobody is running.
  *
- * A phone that was killed mid-generation is the normal case, not the rare one:
- * the next time any of the account's devices asks for the job list, the work
- * resumes without waiting for the sweep.
+ * This is where generation actually happens. It cannot happen in the request
+ * that created the job: `ctx.waitUntil` is cut off thirty seconds after the
+ * response, and a lecture takes minutes — the call died mid-flight every time
+ * and the row sat claimed until it went stale. A cron invocation gets fifteen
+ * minutes of wall clock, and waiting on the network costs no CPU, so this is
+ * the one place long work belongs.
+ *
+ * Jobs run side by side: they are network waits, and serialising them would
+ * spend the fifteen minutes on the queue rather than on the work.
  */
-export const resumeAccountJobs = async (env: Env, accountId: string): Promise<void> => {
-  const rows = await pendingJobsOfAccount(env, accountId);
-  for (const row of rows) await runJob(env, row);
+export const runPending = async (env: Env, limit = 4): Promise<void> => {
+  const rows = await pendingJobs(env, limit);
+  await Promise.all(rows.map((row) => runJob(env, row)));
 };

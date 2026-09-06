@@ -10,7 +10,6 @@ import {
   listJobs,
   type JobRow,
 } from "../jobs/db.js";
-import { resumeAccountJobs, runJob } from "../jobs/runner.js";
 import { requestAccount } from "../session.js";
 
 /** Enough headroom for a person on several devices, low enough to blunt a script. */
@@ -53,19 +52,12 @@ const toPayload = (row: JobRow) => ({
 
 export const jobRoutes = new Hono<{ Bindings: Env }>();
 
-/**
- * Everything the account has in flight or has finished recently.
- *
- * Reading the list also revives work nobody is running: a device that comes
- * back after its own invocation was killed restarts the generation by the very
- * act of asking about it.
- */
+/** Everything the account has in flight or has finished recently. */
 jobRoutes.get("/", async (c) => {
   const account = await requestAccount(c);
   if (!account) return unauthorized(c);
 
   const rows = await listJobs(c.env, account.id);
-  c.executionCtx.waitUntil(resumeAccountJobs(c.env, account.id));
   return c.json({ jobs: rows.map(toPayload) });
 });
 
@@ -79,11 +71,13 @@ jobRoutes.get("/:id", async (c) => {
 });
 
 /**
- * Queues a generation.
+ * Queues a generation. Queues it — nothing more.
  *
- * The response comes back immediately with the job; the model call runs after
- * it, in the same invocation, so the phone can close the connection — or the
- * app itself — the moment it has the id.
+ * The model call deliberately does not start here. Work continued after the
+ * response lives inside `ctx.waitUntil`, which the platform cuts off thirty
+ * seconds later, and a lecture takes minutes: every such call died mid-flight
+ * and left the job claimed by a run that no longer existed. The cron picks it
+ * up within a minute and has fifteen to finish.
  */
 jobRoutes.post("/", async (c) => {
   const account = await requestAccount(c);
@@ -118,7 +112,6 @@ jobRoutes.post("/", async (c) => {
     meta: payload.meta ?? {},
   });
 
-  if (row.status === "queued") c.executionCtx.waitUntil(runJob(c.env, row));
   return c.json({ job: toPayload(row) }, 202);
 });
 

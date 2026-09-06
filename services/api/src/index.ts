@@ -3,13 +3,16 @@ import { cors } from "hono/cors";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import { pruneExpired } from "./db.js";
 import { allowedOrigins, type Env } from "./env.js";
-import { pruneJobs } from "./jobs/db.js";
+import { failStuckJobs, pruneJobs } from "./jobs/db.js";
 import { runPending } from "./jobs/runner.js";
 import { authRoutes } from "./routes/auth.js";
 import { enrollRoutes } from "./routes/enroll.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { providerRoutes } from "./routes/provider.js";
 import { stateRoutes } from "./routes/state.js";
+
+/** The daily housekeeping schedule, as written in wrangler.toml. */
+const DAILY_SWEEP = "0 3 * * *";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -94,16 +97,20 @@ app.notFound((c) => c.json({ code: "not_found", message: "Нет такого м
 export default {
   fetch: app.fetch,
   /**
-   * The sweep does two things.
+   * Where generation actually runs.
    *
-   * Generation nobody is running — an invocation that died mid-call — is picked
-   * up, so work started from a phone that was closed finishes on its own rather
-   * than waiting for someone to open the app. Expired challenges, sessions and
-   * long-finished jobs are rows, and this is what removes them.
+   * Every minute: pick up queued work and finish it, and turn runs that died
+   * mid-flight into a failure the app can show instead of a spinner that never
+   * stops. Once a day the same handler also sweeps expired rows — that part is
+   * cheap but pointless to repeat sixty times an hour.
    */
-  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
     await runPending(env);
-    await pruneExpired(env);
-    await pruneJobs(env);
+    await failStuckJobs(env);
+
+    if (event.cron === DAILY_SWEEP) {
+      await pruneExpired(env);
+      await pruneJobs(env);
+    }
   },
 };
