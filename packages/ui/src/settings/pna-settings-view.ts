@@ -9,9 +9,9 @@ import "../components/ui-field.js";
 import "../components/ui-notice.js";
 
 export const MODEL_CHOICES = [
-  { id: "claude-opus-5", label: "Opus 5 — лучшее качество" },
-  { id: "claude-sonnet-5", label: "Sonnet 5 — быстрее и дешевле" },
-  { id: "claude-haiku-4-5", label: "Haiku 4.5 — самый дешёвый" },
+  { id: "claude-opus-5-5", label: "Opus 5.5 — лучшее качество" },
+  { id: "claude-sonnet-5-5", label: "Sonnet 5.5 — быстрее и дешевле" },
+  { id: "claude-haiku-5-5", label: "Haiku 5.5 — самый дешёвый" },
 ] as const;
 
 /**

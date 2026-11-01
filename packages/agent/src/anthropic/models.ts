@@ -1,5 +1,7 @@
 /** Models that support the dynamic-filtering web search tool. */
 const MODERN_WEB_SEARCH = new Set([
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
   "claude-opus-5",
   "claude-opus-4-8",
   "claude-opus-4-7",
@@ -37,4 +39,4 @@ export const webSearchTool = (
   return blockedDomains.length === 0 ? base : { ...base, blocked_domains: [...blockedDomains] };
 };
 
-export const DEFAULT_MODEL = "claude-opus-5";
+export const DEFAULT_MODEL = "claude-opus-5-5";

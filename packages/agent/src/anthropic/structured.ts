@@ -3,27 +3,29 @@ import { err, ok } from "@pna/core";
 import type { z } from "zod";
 import type { ProviderResult } from "../ports/content-provider.js";
 import { toolInputSchema } from "../schemas/json-schema.js";
+import { collectMessage } from "./accumulate.js";
 import { invalidOutput, refused, structuralErrorMapper, type ErrorMapper } from "./errors.js";
 import { webSearchTool } from "./models.js";
-
-/** What a streamed generation gives back once it has finished. */
-export interface MessageStreamLike {
-  finalMessage(): Promise<Anthropic.Message>;
-}
 
 /**
  * The slice of the SDK this module uses — narrow enough to fake in tests.
  *
- * Generation is streamed, never a plain `create`. A lecture or a program plan
- * runs for minutes and asks for tens of thousands of output tokens; a single
- * non-streaming request of that size sits on one open connection until an HTTP
- * timeout kills it, which on a phone looks like the app hanging and then
- * failing with an API error. Streaming keeps the connection alive and the SDK
- * assembles the same final message.
+ * Generation is streamed, never a buffered response. A lecture or a program
+ * plan runs for minutes and asks for tens of thousands of output tokens; a
+ * single non-streaming request of that size sits on one open connection until
+ * an HTTP timeout kills it, which on a phone looks like the app hanging and
+ * then failing with an API error.
+ *
+ * The stream is consumed raw (`create` with `stream: true`) rather than through
+ * the SDK's `MessageStream`, whose per-delta bookkeeping exists for rendering a
+ * response live and costs CPU the Worker's cron budget cannot spare. The
+ * message is assembled by `collectMessage`.
  */
 export interface MessagesClient {
   readonly messages: {
-    stream(params: Anthropic.MessageStreamParams): MessageStreamLike;
+    create(
+      params: Anthropic.MessageCreateParamsStreaming,
+    ): PromiseLike<AsyncIterable<Anthropic.RawMessageStreamEvent>>;
   };
 }
 
@@ -91,14 +93,14 @@ export const runStructured = async <T>(
       strict: true,
       input_schema: toolInputSchema(call.schema) as Anthropic.Tool["input_schema"],
     },
-  ] as Anthropic.MessageStreamParams["tools"];
+  ] as Anthropic.MessageCreateParamsStreaming["tools"];
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: call.prompt }];
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
     let message: Anthropic.Message;
     try {
-      message = await client.messages.stream({
+      const events = await client.messages.create({
         model: config.model,
         max_tokens: call.maxTokens,
         // The system prompt is stable per call kind, so it is the cacheable prefix.
@@ -107,7 +109,9 @@ export const runStructured = async <T>(
         output_config: { effort: call.effort },
         tools,
         messages,
-      }).finalMessage();
+        stream: true,
+      });
+      message = await collectMessage(events);
     } catch (error) {
       return err(mapError(error));
     }

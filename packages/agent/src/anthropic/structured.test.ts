@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { eventsOf, streamOf } from "../testing/stream.js";
 import { runStructured, type MessagesClient, type StructuredCall } from "./structured.js";
 
 const schema = z.strictObject({ answer: z.string() });
@@ -39,17 +40,17 @@ const toolUse = (input: unknown, id = "tu_1") =>
 const text = (value: string) =>
   message({ content: [{ type: "text", text: value, citations: null } as Anthropic.TextBlock] });
 
-/** Fakes the streaming client: one call, one final message. */
+/** Fakes the streaming client: one call, one message played back as raw events. */
 const clientOf = (responses: Anthropic.Message[] | ((n: number) => Anthropic.Message)) => {
-  const stream = vi.fn((_params: Anthropic.MessageStreamParams) => {
-    const index = stream.mock.calls.length - 1;
+  const create = vi.fn(async (_params: Anthropic.MessageCreateParamsStreaming) => {
+    const index = create.mock.calls.length - 1;
     const result =
       typeof responses === "function"
         ? responses(index)
         : (responses[index] ?? message({ stop_reason: "end_turn" }));
-    return { finalMessage: async () => result };
+    return streamOf(eventsOf(result));
   });
-  return { client: { messages: { stream } } satisfies MessagesClient, create: stream };
+  return { client: { messages: { create } } satisfies MessagesClient, create };
 };
 
 describe("runStructured", () => {
@@ -170,16 +171,32 @@ describe("runStructured", () => {
   it("surfaces a transport failure as a provider error", async () => {
     const client: MessagesClient = {
       messages: {
-        stream: () => ({
-          finalMessage: async () => {
-            throw new Error("socket hang up");
-          },
-        }),
+        create: async () => {
+          throw new Error("socket hang up");
+        },
       },
     };
     expect(await runStructured(client, { model: "claude-opus-5" }, call)).toEqual({
       ok: false,
       error: { kind: "unknown", message: "socket hang up" },
     });
+  });
+
+  it("surfaces a stream that breaks mid-answer as a provider error", async () => {
+    async function* broken(): AsyncGenerator<Anthropic.RawMessageStreamEvent> {
+      yield* eventsOf(toolUse({ answer: "4" })).slice(0, 3);
+      throw new Error("stream reset");
+    }
+    const client: MessagesClient = { messages: { create: async () => broken() } };
+    expect(await runStructured(client, { model: "claude-opus-5" }, call)).toEqual({
+      ok: false,
+      error: { kind: "unknown", message: "stream reset" },
+    });
+  });
+
+  it("asks for the raw event stream, never a buffered response", async () => {
+    const { client, create } = clientOf([toolUse({ answer: "42" })]);
+    await runStructured(client, { model: "claude-opus-5" }, call);
+    expect(create.mock.calls[0]![0].stream).toBe(true);
   });
 });
