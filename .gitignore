@@ -20,3 +20,8 @@ apps/mobile/src-tauri/gen/
 
 # Local credentials — never committed
 .secrets/
+
+# End-to-end runs
+e2e/.state/
+test-results/
+playwright-report/
