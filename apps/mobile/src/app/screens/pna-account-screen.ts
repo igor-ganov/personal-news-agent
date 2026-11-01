@@ -1,4 +1,4 @@
-import type { PendingClaim } from "@pna/app";
+import { shareApiKey, type PendingClaim } from "@pna/app";
 import type { AuthError, DeviceInvite } from "@pna/auth";
 import type { Account, ClaimStrategy, Instant, PasskeyRef, Result } from "@pna/core";
 import { css, html } from "lit";
@@ -157,6 +157,7 @@ export class PnaAccountScreen extends ConnectedElement {
 
     this._pending = null;
     this._account = outcome.value.session.account;
+    void shareApiKey(this.ctx);
     await this.loadPasskeys(outcome.value.session.token);
   }
 
@@ -228,6 +229,7 @@ export class PnaAccountScreen extends ConnectedElement {
 
     this._pending = null;
     this._account = outcome.value.session.account;
+    void shareApiKey(this.ctx);
     await this.loadPasskeys(outcome.value.session.token);
   }
 

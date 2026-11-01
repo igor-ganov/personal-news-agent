@@ -35,6 +35,26 @@ export const saveApiKey = async (
   return shared.ok ? ok(true) : shared;
 };
 
+/**
+ * Gives the server the device's key once there is an account to give it to.
+ *
+ * A key saved before signing in stayed on the phone only, and every job the
+ * server picked up failed for want of one. Called after sign-in and on start;
+ * it does nothing when the server already holds this account's own key.
+ */
+export const shareApiKey = async (ctx: AppContext): Promise<Result<boolean, AppError>> => {
+  const gateway = ctx.deps.jobs;
+  const key = await ctx.deps.secrets.get();
+  if (!gateway || key === null) return ok(false);
+
+  const current = await gateway.credentials();
+  if (!current.ok) return current;
+  if (current.value.ownKey) return ok(false);
+
+  const shared = await gateway.setCredentials(key, ctx.store.getState().settings.model);
+  return shared.ok ? ok(true) : shared;
+};
+
 /** What the server can generate with right now, or null without an account. */
 export const generatorCredentials = async (
   ctx: AppContext,
