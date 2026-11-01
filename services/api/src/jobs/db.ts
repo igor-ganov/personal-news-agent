@@ -1,6 +1,9 @@
 import { randomId } from "../crypto.js";
 import type { Env } from "../env.js";
 import { seal, unseal } from "../secrets.js";
+import type { JobStore } from "./sql.js";
+
+export type { JobStore } from "./sql.js";
 
 export type JobStatus = "queued" | "running" | "done" | "failed";
 
@@ -20,21 +23,43 @@ export interface JobRow {
   updated_at: string;
   started_at: string | null;
   finished_at: string | null;
+  heartbeat_at?: string | null;
 }
 
 const nowIso = (): string => new Date().toISOString();
 
 /**
- * How long a job may sit in `running` before it is assumed dead.
- *
- * Only the cron runs jobs, and a cron invocation gets fifteen minutes of wall
- * clock; anything still marked running after sixteen was killed mid-flight.
- * The number used to be twenty minutes and covered a different, self-inflicted
- * case: work started in `waitUntil`, which the platform kills thirty seconds
- * after the response — so every generation died and then waited out the whole
- * stale window before anyone retried it.
+ * How often a running job stamps `heartbeat_at` while it waits on the model.
  */
-export const STALE_AFTER_MS = 16 * 60_000;
+export const HEARTBEAT_EVERY_MS = 30_000;
+
+/**
+ * How long a running job may stay silent before it is assumed dead.
+ *
+ * Liveness is the heartbeat, not the start time: a generation may run for many
+ * minutes, but an invocation that is still alive stamps the row every half
+ * minute. Six missed beats means the isolate was killed — out of CPU, evicted,
+ * redeployed — and nothing will ever finish the row unless the sweep does.
+ * Rows claimed before the heartbeat existed fall back to `started_at`.
+ */
+export const STALE_AFTER_MS = 3 * 60_000;
+
+/** The SQL expression a job's last sign of life is read from. */
+const LAST_SEEN = "COALESCE(heartbeat_at, started_at)";
+
+const staleBefore = (): string => new Date(Date.now() - STALE_AFTER_MS).toISOString();
+
+/**
+ * The rows a worker may take: queued, or claimed by a run that went silent —
+ * and in both cases only while attempts remain. Without the cap a run killed
+ * every time (out of CPU, say) is re-claimed forever and the app spins forever.
+ * The arguments are the placeholders the staleness cutoff and the cap bind to.
+ */
+const claimable = (stale: string, maxAttempts: string): string =>
+  `attempts < ${maxAttempts} AND (status = 'queued' OR (status = 'running' AND ${LAST_SEEN} <= ${stale}))`;
+
+/** Shown when the server gave up on a job whose runs kept dying. */
+export const STUCK_JOB_MESSAGE = "Генерация прервалась на сервере. Попробуйте ещё раз.";
 
 /** A job is retried this many times before its failure is reported to the app. */
 export const MAX_ATTEMPTS = 3;
@@ -47,7 +72,7 @@ export const LIST_LIMIT = 50;
 
 /* -------------------------------------------------------------------- read -- */
 
-export const listJobs = async (env: Env, accountId: string): Promise<JobRow[]> => {
+export const listJobs = async (env: JobStore, accountId: string): Promise<JobRow[]> => {
   const { results } = await env.DB.prepare(
     `SELECT * FROM jobs WHERE account_id = ? ORDER BY updated_at DESC LIMIT ?`,
   )
@@ -56,16 +81,16 @@ export const listJobs = async (env: Env, accountId: string): Promise<JobRow[]> =
   return results ?? [];
 };
 
-export const findJob = (env: Env, accountId: string, id: string): Promise<JobRow | null> =>
+export const findJob = (env: JobStore, accountId: string, id: string): Promise<JobRow | null> =>
   env.DB.prepare("SELECT * FROM jobs WHERE id = ? AND account_id = ?")
     .bind(id, accountId)
     .first<JobRow>();
 
-export const findJobById = (env: Env, id: string): Promise<JobRow | null> =>
+export const findJobById = (env: JobStore, id: string): Promise<JobRow | null> =>
   env.DB.prepare("SELECT * FROM jobs WHERE id = ?").bind(id).first<JobRow>();
 
 /** The live job for a key, if the account already has one. */
-export const findLiveJob = (env: Env, accountId: string, key: string): Promise<JobRow | null> =>
+export const findLiveJob = (env: JobStore, accountId: string, key: string): Promise<JobRow | null> =>
   env.DB.prepare(
     `SELECT * FROM jobs WHERE account_id = ? AND task_key = ? AND status IN ('queued','running')`,
   )
@@ -89,7 +114,7 @@ export interface NewJob {
  * the same moment cannot both win: the loser's insert is refused and it reads
  * back the job that got in first.
  */
-export const enqueueJob = async (env: Env, job: NewJob): Promise<JobRow> => {
+export const enqueueJob = async (env: JobStore, job: NewJob): Promise<JobRow> => {
   const existing = await findLiveJob(env, job.accountId, job.key);
   if (existing) return existing;
 
@@ -141,18 +166,31 @@ export const enqueueJob = async (env: Env, job: NewJob): Promise<JobRow> => {
  * The status check is part of the UPDATE, so of two workers that pick up the
  * same row exactly one sees a change and runs it.
  */
-export const claimJob = async (env: Env, id: string): Promise<boolean> => {
-  const stale = new Date(Date.now() - STALE_AFTER_MS).toISOString();
+export const claimJob = async (env: JobStore, id: string): Promise<boolean> => {
+  const now = nowIso();
   const result = await env.DB.prepare(
-    `UPDATE jobs SET status = 'running', attempts = attempts + 1, started_at = ?, updated_at = ?
-     WHERE id = ? AND (status = 'queued' OR (status = 'running' AND started_at <= ?))`,
+    `UPDATE jobs SET status = 'running', attempts = attempts + 1,
+       started_at = ?1, heartbeat_at = ?1, updated_at = ?1
+     WHERE id = ?2 AND ${claimable("?3", "?4")}`,
   )
-    .bind(nowIso(), nowIso(), id, stale)
+    .bind(now, id, staleBefore(), MAX_ATTEMPTS)
     .run();
   return (result.meta.changes ?? 0) > 0;
 };
 
-export const completeJob = async (env: Env, id: string, result: unknown): Promise<void> => {
+/**
+ * Says a claimed job is still being worked on. Only a row that is still
+ * running is touched, so a beat that lands after the result changes nothing.
+ */
+export const touchJob = async (env: JobStore, id: string): Promise<void> => {
+  await env.DB.prepare(
+    `UPDATE jobs SET heartbeat_at = ? WHERE id = ? AND status = 'running'`,
+  )
+    .bind(nowIso(), id)
+    .run();
+};
+
+export const completeJob = async (env: JobStore, id: string, result: unknown): Promise<void> => {
   await env.DB.prepare(
     `UPDATE jobs SET status = 'done', result = ?, error_kind = NULL, error_message = NULL,
        finished_at = ?, updated_at = ? WHERE id = ?`,
@@ -166,7 +204,7 @@ export const completeJob = async (env: Env, id: string, result: unknown): Promis
  * `queued` instead — the app should only be shown what will not fix itself.
  */
 export const failJob = async (
-  env: Env,
+  env: JobStore,
   id: string,
   error: { kind: string; message: string },
   retryable: boolean,
@@ -189,18 +227,16 @@ export const failJob = async (
     .run();
 };
 
-export const deleteJob = async (env: Env, accountId: string, id: string): Promise<void> => {
+export const deleteJob = async (env: JobStore, accountId: string, id: string): Promise<void> => {
   await env.DB.prepare("DELETE FROM jobs WHERE id = ? AND account_id = ?").bind(id, accountId).run();
 };
 
 /** Jobs that nobody is running: queued, or claimed by an invocation that died. */
-export const pendingJobs = async (env: Env, limit = 10): Promise<JobRow[]> => {
-  const stale = new Date(Date.now() - STALE_AFTER_MS).toISOString();
+export const pendingJobs = async (env: JobStore, limit = 10): Promise<JobRow[]> => {
   const { results } = await env.DB.prepare(
-    `SELECT * FROM jobs WHERE status = 'queued' OR (status = 'running' AND started_at <= ?)
-     ORDER BY created_at LIMIT ?`,
+    `SELECT * FROM jobs WHERE ${claimable("?1", "?2")} ORDER BY created_at LIMIT ?3`,
   )
-    .bind(stale, limit)
+    .bind(staleBefore(), MAX_ATTEMPTS, limit)
     .all<JobRow>();
   return results ?? [];
 };
@@ -210,22 +246,21 @@ export const pendingJobs = async (env: Env, limit = 10): Promise<JobRow[]> => {
  *
  * A run killed mid-flight leaves the row claimed and silent. After the attempts
  * are spent, silence is the worst possible answer: the app shows a spinner that
- * never stops. This turns it into a sentence the user can read.
+ * never stops. This turns it into a sentence the user can read. The row ends
+ * `failed`, which nothing re-queues: retrying is the user's call now.
  */
-export const failStuckJobs = async (env: Env): Promise<number> => {
-  const stale = new Date(Date.now() - STALE_AFTER_MS).toISOString();
+export const failStuckJobs = async (env: JobStore): Promise<number> => {
   const result = await env.DB.prepare(
-    `UPDATE jobs SET status = 'failed', error_kind = 'timeout',
-       error_message = 'Генерация не уложилась во время и была остановлена',
-       finished_at = ?1, updated_at = ?1
-     WHERE status = 'running' AND started_at <= ?2 AND attempts >= ?3`,
+    `UPDATE jobs SET status = 'failed', error_kind = 'timeout', error_message = ?1,
+       finished_at = ?2, updated_at = ?2
+     WHERE status = 'running' AND ${LAST_SEEN} <= ?3 AND attempts >= ?4`,
   )
-    .bind(new Date().toISOString(), stale, MAX_ATTEMPTS)
+    .bind(STUCK_JOB_MESSAGE, nowIso(), staleBefore(), MAX_ATTEMPTS)
     .run();
   return result.meta.changes ?? 0;
 };
 
-export const pruneJobs = async (env: Env): Promise<void> => {
+export const pruneJobs = async (env: JobStore): Promise<void> => {
   const cutoff = new Date(Date.now() - KEEP_FINISHED_MS).toISOString();
   await env.DB.prepare(
     "DELETE FROM jobs WHERE status IN ('done','failed') AND updated_at <= ?",
@@ -244,7 +279,7 @@ export interface ProviderKeyRow {
   updated_at: string;
 }
 
-export const readProviderKeyRow = (env: Env, accountId: string): Promise<ProviderKeyRow | null> =>
+export const readProviderKeyRow = (env: JobStore, accountId: string): Promise<ProviderKeyRow | null> =>
   env.DB.prepare("SELECT * FROM provider_keys WHERE account_id = ?")
     .bind(accountId)
     .first<ProviderKeyRow>();
@@ -268,7 +303,7 @@ export const saveProviderKey = async (
     .run();
 };
 
-export const deleteProviderKey = async (env: Env, accountId: string): Promise<void> => {
+export const deleteProviderKey = async (env: JobStore, accountId: string): Promise<void> => {
   await env.DB.prepare("DELETE FROM provider_keys WHERE account_id = ?").bind(accountId).run();
 };
 

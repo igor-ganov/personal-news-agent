@@ -99,14 +99,16 @@ export default {
   /**
    * Where generation actually runs.
    *
-   * Every minute: pick up queued work and finish it, and turn runs that died
-   * mid-flight into a failure the app can show instead of a spinner that never
-   * stops. Once a day the same handler also sweeps expired rows — that part is
+   * Every minute: first turn runs that died with no attempts left into a
+   * failure the app can show, then pick up queued work and finish it. The sweep
+   * comes first because a tick that runs out of CPU never reaches its tail —
+   * placed after the work, it would never run on exactly the ticks that need
+   * it. Once a day the same handler also sweeps expired rows — that part is
    * cheap but pointless to repeat sixty times an hour.
    */
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    await runPending(env);
     await failStuckJobs(env);
+    await runPending(env);
 
     if (event.cron === DAILY_SWEEP) {
       await pruneExpired(env);
