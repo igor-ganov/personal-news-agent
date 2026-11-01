@@ -31,7 +31,7 @@ export interface Settings {
 
 export const defaultSettings = (): Settings => ({
   providerId: "anthropic",
-  model: "claude-opus-5",
+  model: "claude-opus-5-5",
   autoRefreshSources: true,
   sourceRefreshDays: 7,
   autoDigestPeriods: ["day", "week"],
