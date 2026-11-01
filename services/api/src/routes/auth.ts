@@ -9,6 +9,7 @@ import { fromBase64Url, randomId, toBase64Url, utf8Bytes } from "../crypto.js";
 import {
   accountForInvite,
   accountForToken,
+  claimSeed,
   consumeInvite,
   createAccount,
   createInvite,
@@ -57,7 +58,7 @@ export const publicAccount = (row: {
  * differ between accounts — otherwise two keys on one phone look identical.
  */
 const handleFor = (email: string, accountId: string): string =>
-  email || `агент-${accountId.slice(0, 6)}`;
+  email || `Личный агент ${accountId.slice(0, 4)}`;
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
@@ -140,7 +141,8 @@ authRoutes.post("/register/verify", async (c) => {
   if (challenge.email_lower && (await findAccountByEmail(c.env, challenge.email_lower)))
     return fail(c, 409, "email_taken", "Такой аккаунт уже есть — войдите по ключу");
 
-  const account = await createAccount(c.env, challenge.email_lower);
+  const account = await createAccount(c.env, challenge.email_lower, challenge.account_id);
+  await claimSeed(c.env, account.id);
   const credential = verification.registrationInfo.credential;
 
   await insertCredential(c.env, {

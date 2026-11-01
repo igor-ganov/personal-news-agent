@@ -36,9 +36,17 @@ export const findAccountByEmail = (env: Env, emailLower: string): Promise<Accoun
 export const findAccountById = (env: Env, id: string): Promise<AccountRow | null> =>
   env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<AccountRow>();
 
-export const createAccount = async (env: Env, email: string | null): Promise<AccountRow> => {
+/**
+ * The id is the one the passkey already carries as its user handle: minting a
+ * second id here left every key pointing at an id no account had.
+ */
+export const createAccount = async (
+  env: Env,
+  email: string | null,
+  id: string = randomId(),
+): Promise<AccountRow> => {
   const row: AccountRow = {
-    id: randomId(),
+    id,
     email,
     email_lower: email ? email.toLowerCase() : null,
     email_verified: 0,
@@ -293,6 +301,22 @@ export const writeDocument = async (
     .bind(row.account_id, row.revision, row.body, row.updated_at)
     .run();
   return row;
+};
+
+/* ------------------------------------------------------------------ seeds -- */
+
+/**
+ * Hands a prepared starting document to the account that takes it first.
+ *
+ * A seed is a one-shot: `DELETE … RETURNING` claims it atomically, so two
+ * registrations racing for it cannot both get a copy.
+ */
+export const claimSeed = async (env: Env, accountId: string): Promise<boolean> => {
+  const seed = await env.DB.prepare(
+    "DELETE FROM account_seeds WHERE id = (SELECT id FROM account_seeds ORDER BY created_at LIMIT 1) RETURNING body",
+  ).first<{ body: string }>();
+  if (!seed) return false;
+  return (await writeDocument(env, accountId, seed.body, 0)) !== null;
 };
 
 /* ------------------------------------------------------------ rate limits -- */
