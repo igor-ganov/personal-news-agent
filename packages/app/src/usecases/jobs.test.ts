@@ -14,7 +14,14 @@ import { appError, type AppError } from "../errors.js";
 import type { JobSubmission, JobView, JobsGateway } from "../ports/jobs.js";
 import { addTopic } from "./topics.js";
 import { commitProgram, draftProgram, generateLesson, programTaskKey, lessonTaskKey } from "./skills.js";
-import { describeJobSyncError, dismissJob, heldPlan, startJobPolling, syncJobs } from "./jobs.js";
+import {
+  describeJobSyncError,
+  dismissJob,
+  heldPlan,
+  pendingRequest,
+  startJobPolling,
+  syncJobs,
+} from "./jobs.js";
 
 const plan: ProgramDraft = {
   title: "План",
@@ -228,6 +235,45 @@ describe("syncJobs and work that never comes back", () => {
     await syncJobs(ctx);
 
     expect(ctx.deps.tasks.get(key)).toMatchObject({ status: "running", since: createdAt });
+  });
+});
+
+describe("pendingRequest", () => {
+  const request = (topicId: Parameters<typeof programTaskKey>[0]) => ({
+    topicId,
+    intent: "разобраться",
+    schedule: {
+      startDay: calendarDay(T0),
+      intensity: { weeks: 2, sessionsPerWeek: 3, minutesPerSession: 45 },
+    },
+    basedOn: [],
+    continuation: "fresh" as const,
+  });
+
+  it("knows what a running plan was asked for, so the screen can show it after a restart", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    await draftProgram(ctx, request(topicId));
+
+    const fresh = withTopic(server.gateway);
+    await syncJobs(fresh.ctx);
+
+    expect(pendingRequest("program", fresh.ctx.deps.tasks.get(programTaskKey(topicId)))).toEqual(
+      request(topicId),
+    );
+  });
+
+  it("keeps the request of a failed or lost plan, so retry needs no retyping", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+    await draftProgram(ctx, request(topicId));
+
+    server.set([]);
+    await syncJobs(ctx);
+
+    expect(ctx.deps.tasks.get(key).status).toBe("error");
+    expect(pendingRequest("program", ctx.deps.tasks.get(key))).toEqual(request(topicId));
   });
 });
 

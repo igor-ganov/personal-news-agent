@@ -304,6 +304,18 @@ const isProgramDraft = (value: unknown): value is ProgramDraft => {
   );
 };
 
+/**
+ * What a task was asked for, kept while it runs and after it fails: the screen
+ * shows it after a restart, and "повторить" resubmits it without retyping.
+ * A held plan carries its request the same way, so this reads both.
+ */
+const asked = (meta: unknown): { readonly request: unknown } => ({ request: meta });
+
+export const pendingRequest = <K extends AgentJobKind>(
+  kind: K,
+  state: TaskState,
+): JobMetas[K] | null => META_PARSERS[kind](record(state.result)?.request);
+
 export const heldPlan = (state: TaskState): HeldPlan | null => {
   const held = record(state.result);
   if (!held || !isProgramDraft(held.draft)) return null;
@@ -365,25 +377,30 @@ export const runGeneration = async <K extends AgentJobKind>(
     // A finished job under the same key would keep coming back on every sync.
     if (previous.jobId) await gateway.dismiss(previous.jobId);
 
-    tasks.adopt(request.key, { status: "running" });
+    const result = asked(request.meta);
+    tasks.adopt(request.key, { status: "running", result });
     const submitted = await gateway.submit(submissionOf(request));
     if (!submitted.ok) {
-      tasks.adopt(request.key, { status: "error", error: submitted.error.message });
+      tasks.adopt(request.key, { status: "error", error: submitted.error.message, result });
       return submitted;
     }
 
-    tasks.adopt(request.key, { status: "running", jobId: submitted.value.id });
+    tasks.adopt(request.key, { status: "running", jobId: submitted.value.id, result });
     return ok({ kind: "queued", jobId: submitted.value.id });
   }
 
-  tasks.adopt(request.key, { status: "running" });
+  tasks.adopt(request.key, { status: "running", result: asked(request.meta) });
 
   // `kind` and `input` are correlated by construction; indexing the union here
   // is what loses that for the compiler, so the pairing is restated once.
   const call = { kind: request.kind, input: request.input } as AgentJobRequest;
   const produced = await runAgentJob(ctx.deps.provider, call);
   if (!produced.ok) {
-    tasks.adopt(request.key, { status: "error", error: produced.error.message });
+    tasks.adopt(request.key, {
+      status: "error",
+      error: produced.error.message,
+      result: asked(request.meta),
+    });
     return err(produced.error);
   }
 
@@ -418,13 +435,23 @@ const startOf = (ctx: AppContext, job: JobView): string => {
   return job.createdAt ?? seen ?? ctx.deps.clock.now();
 };
 
+/**
+ * The request a server job was made from. The same object is kept across polls
+ * of the same job, so an unchanged job does not re-render every screen.
+ */
+const askedOf = (ctx: AppContext, job: JobView): unknown => {
+  const known = ctx.deps.tasks.get(job.key);
+  return known.jobId === job.id && known.result !== null ? known.result : asked(job.meta);
+};
+
 const foldRunning = (ctx: AppContext, job: JobView): void => {
   const since = startOf(ctx, job);
+  const result = askedOf(ctx, job);
   ctx.deps.tasks.adopt(
     job.key,
     overdue(since, ctx.deps.clock.now())
-      ? { status: "error", error: OVERDUE_JOB_MESSAGE, jobId: job.id }
-      : { status: "running", jobId: job.id, since },
+      ? { status: "error", error: OVERDUE_JOB_MESSAGE, jobId: job.id, result }
+      : { status: "running", jobId: job.id, since, result },
   );
 };
 
@@ -442,6 +469,7 @@ const foldJob = async (ctx: AppContext, job: JobView): Promise<boolean> => {
       status: "error",
       error: job.error?.message ?? "Не получилось",
       jobId: job.id,
+      result: askedOf(ctx, job),
     });
     return false;
   }
@@ -494,7 +522,9 @@ const failLostJobs = (
   awaited
     .filter(({ key, jobId }) => !present.has(jobId) && tasks.get(key).jobId === jobId)
     .filter(({ key }) => tasks.isRunning(key))
-    .forEach(({ key }) => tasks.adopt(key, { status: "error", error: LOST_JOB_MESSAGE }));
+    .forEach(({ key }) =>
+      tasks.adopt(key, { status: "error", error: LOST_JOB_MESSAGE, result: tasks.get(key).result }),
+    );
 };
 
 /**
