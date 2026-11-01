@@ -25,6 +25,8 @@ export interface JobView {
   readonly meta: unknown;
   readonly result: unknown;
   readonly error: JobFailure | null;
+  /** When the server accepted the work (ISO instant), if it said. */
+  readonly createdAt?: string;
 }
 
 export interface JobSubmission {

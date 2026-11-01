@@ -14,6 +14,7 @@ const toView = (job: RemoteJob): JobView => ({
   meta: job.meta,
   result: job.result,
   error: job.error,
+  ...(job.createdAt ? { createdAt: job.createdAt } : {}),
 });
 
 /** Where the token comes from — the account service holds the live session. */

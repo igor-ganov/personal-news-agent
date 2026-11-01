@@ -1,5 +1,7 @@
 import {
   calendarDay,
+  err,
+  instantOf,
   ok,
   programLessons,
   quizOfLesson,
@@ -8,11 +10,11 @@ import {
 } from "@pna/core";
 import { describe, expect, it } from "vitest";
 import { harness, T0 } from "../testing/harness.js";
-import type { AppError } from "../errors.js";
+import { appError, type AppError } from "../errors.js";
 import type { JobSubmission, JobView, JobsGateway } from "../ports/jobs.js";
 import { addTopic } from "./topics.js";
 import { commitProgram, draftProgram, generateLesson, programTaskKey, lessonTaskKey } from "./skills.js";
-import { dismissJob, heldPlan, syncJobs } from "./jobs.js";
+import { describeJobSyncError, dismissJob, heldPlan, startJobPolling, syncJobs } from "./jobs.js";
 
 const plan: ProgramDraft = {
   title: "План",
@@ -169,6 +171,98 @@ describe("runGeneration with a server", () => {
     await dismissJob(ctx, key);
     expect(server.dismissed).toEqual(["job_9"]);
     expect(ctx.deps.tasks.get(key).status).toBe("idle");
+  });
+});
+
+describe("syncJobs and work that never comes back", () => {
+  const request = (topicId: Parameters<typeof programTaskKey>[0]) => ({
+    topicId,
+    intent: "разобраться",
+    schedule: {
+      startDay: calendarDay(T0),
+      intensity: { weeks: 1, sessionsPerWeek: 1, minutesPerSession: 45 },
+    },
+    basedOn: [],
+    continuation: "fresh" as const,
+  });
+
+  it("stops spinning when the server no longer lists the job", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+    await draftProgram(ctx, request(topicId));
+
+    server.set([]);
+    await syncJobs(ctx);
+
+    expect(ctx.deps.tasks.get(key)).toMatchObject({
+      status: "error",
+      error: "Задание потерялось на сервере, запустите заново",
+    });
+  });
+
+  it("gives up on a job that has been running past the deadline", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+    const createdAt = instantOf(Date.parse(T0) - 21 * 60_000);
+
+    server.set([
+      { id: "job_9", key, kind: "program", status: "running", meta: {}, result: null, error: null, createdAt },
+    ]);
+    await syncJobs(ctx);
+
+    expect(ctx.deps.tasks.get(key)).toMatchObject({ status: "error", jobId: "job_9" });
+    expect(ctx.deps.tasks.get(key).error).toContain("слишком долго");
+  });
+
+  it("remembers when a job started so the screen can show the elapsed time", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+    const createdAt = instantOf(Date.parse(T0) - 80_000);
+
+    server.set([
+      { id: "job_9", key, kind: "program", status: "running", meta: {}, result: null, error: null, createdAt },
+    ]);
+    await syncJobs(ctx);
+
+    expect(ctx.deps.tasks.get(key)).toMatchObject({ status: "running", since: createdAt });
+  });
+});
+
+describe("startJobPolling", () => {
+  it("reports a failed look and says when the next one worked", async () => {
+    const server = fakeJobs();
+    let failing = true;
+    const gateway: JobsGateway = {
+      ...server.gateway,
+      list: async () =>
+        failing ? err(appError("unauthorized", "Нет доступа")) : server.gateway.list(),
+    };
+    const { ctx } = withTopic(gateway);
+    const errors: string[] = [];
+    let recovered = 0;
+
+    const firstLook = new Promise<void>((resolve) => {
+      const stop = startJobPolling(ctx, {
+        activeMs: 1,
+        idleMs: 1,
+        onError: (error) => {
+          errors.push(describeJobSyncError(error));
+          failing = false;
+        },
+        onSuccess: () => {
+          recovered += 1;
+          stop();
+          resolve();
+        },
+      });
+    });
+    await firstLook;
+
+    expect(errors).toEqual(["Сессия истекла — войдите снова"]);
+    expect(recovered).toBe(1);
   });
 });
 

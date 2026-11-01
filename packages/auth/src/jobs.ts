@@ -25,6 +25,8 @@ export interface RemoteJob {
   readonly meta: unknown;
   readonly result: unknown;
   readonly error: RemoteJobError | null;
+  /** When the server accepted the job; empty if it did not say. */
+  readonly createdAt: string;
   readonly updatedAt: string;
 }
 
@@ -45,8 +47,18 @@ export interface ProviderKeyStatus {
 
 const STATUSES: readonly RemoteJobStatus[] = ["queued", "running", "done", "failed"];
 
-const asStatus = (value: unknown): RemoteJobStatus =>
-  STATUSES.find((status) => status === value) ?? "queued";
+const knownStatus = (value: unknown): RemoteJobStatus | undefined =>
+  STATUSES.find((status) => status === value);
+
+/**
+ * A status this build does not know is not "still waiting": treating it as
+ * queued is what kept a screen spinning forever. It is surfaced as a failure
+ * the user can retry.
+ */
+const unknownStatusError = (value: unknown): RemoteJobError => ({
+  kind: "unknown",
+  message: `Сервер вернул неизвестный статус задания: ${String(value)}`,
+});
 
 const asError = (value: unknown): RemoteJobError | null => {
   if (typeof value !== "object" || value === null) return null;
@@ -63,14 +75,16 @@ const parseJob = (raw: unknown): RemoteJob | null => {
   if (typeof job.id !== "string" || typeof job.key !== "string" || typeof job.kind !== "string")
     return null;
 
+  const status = knownStatus(job.status);
   return {
     id: job.id,
     key: job.key,
     kind: job.kind,
-    status: asStatus(job.status),
+    status: status ?? "failed",
     meta: job.meta ?? {},
     result: job.result ?? null,
-    error: asError(job.error),
+    error: status ? asError(job.error) : unknownStatusError(job.status),
+    createdAt: typeof job.createdAt === "string" ? job.createdAt : "",
     updatedAt: typeof job.updatedAt === "string" ? job.updatedAt : "",
   };
 };

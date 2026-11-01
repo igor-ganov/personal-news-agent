@@ -145,6 +145,27 @@ describe("ensureSourcesFresh", () => {
     await ensureSourcesFresh(ctx, topicId);
     expect(provider.calls).toHaveLength(1);
   });
+
+  it("leaves a fresh list alone", async () => {
+    const provider = proposing([candidate()]);
+    const { ctx, topicId } = withTopic(provider);
+    await ensureSourcesFresh(ctx, topicId);
+    await ensureSourcesFresh(ctx, topicId);
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  it("does not retry on its own after a failure — the user presses the button", async () => {
+    const failing = failingProvider();
+    const discoverSources = vi.fn(failing.discoverSources);
+    const { ctx, topicId } = withTopic({ ...failing, discoverSources });
+
+    await ensureSourcesFresh(ctx, topicId);
+    await ensureSourcesFresh(ctx, topicId);
+    expect(discoverSources).toHaveBeenCalledTimes(1);
+
+    await refreshTopicSources(ctx, topicId, { force: true });
+    expect(discoverSources).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("manual source editing", () => {

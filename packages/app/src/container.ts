@@ -137,7 +137,7 @@ export const bootstrap = async (options: BootstrapOptions): Promise<Bootstrapped
       provider: options.provider,
       repository,
       secrets,
-      tasks: options.tasks ?? createTaskTracker(),
+      tasks: options.tasks ?? createTaskTracker((options.clock ?? systemClock).now),
       account,
       jobs,
     },

@@ -21,6 +21,7 @@ import {
   setLessonStatus,
   sourceId as toSourceId,
   sourcesOfTopic,
+  toEpochMs,
   topicId as toTopicId,
   type ContinuationMode,
   type Digest,
@@ -401,12 +402,38 @@ export const runGeneration = async <K extends AgentJobKind>(
 
 const RUNNING: readonly JobStatus[] = ["queued", "running"];
 
+/** No generation takes this long; past it the job is treated as stuck. */
+export const JOB_DEADLINE_MS = 20 * 60_000;
+
+export const LOST_JOB_MESSAGE = "Задание потерялось на сервере, запустите заново";
+export const OVERDUE_JOB_MESSAGE = "Генерация идёт слишком долго — запустите заново";
+
+const overdue = (since: string, now: string): boolean =>
+  toEpochMs(instantOf(now)) - toEpochMs(instantOf(since)) > JOB_DEADLINE_MS;
+
+/** When the job started: the server's word, else when this app first saw it running. */
+const startOf = (ctx: AppContext, job: JobView): string => {
+  const known = ctx.deps.tasks.get(job.key);
+  const seen = known.status === "running" ? known.since ?? undefined : undefined;
+  return job.createdAt ?? seen ?? ctx.deps.clock.now();
+};
+
+const foldRunning = (ctx: AppContext, job: JobView): void => {
+  const since = startOf(ctx, job);
+  ctx.deps.tasks.adopt(
+    job.key,
+    overdue(since, ctx.deps.clock.now())
+      ? { status: "error", error: OVERDUE_JOB_MESSAGE, jobId: job.id }
+      : { status: "running", jobId: job.id, since },
+  );
+};
+
 /** Whether folding this job changed the state document. */
 const foldJob = async (ctx: AppContext, job: JobView): Promise<boolean> => {
   const tasks = ctx.deps.tasks;
 
   if (RUNNING.includes(job.status)) {
-    tasks.adopt(job.key, { status: "running", jobId: job.id });
+    foldRunning(ctx, job);
     return false;
   }
 
@@ -440,6 +467,36 @@ const foldJob = async (ctx: AppContext, job: JobView): Promise<boolean> => {
   return outcome === "applied";
 };
 
+interface AwaitedJob {
+  readonly key: string;
+  readonly jobId: string;
+}
+
+/** Tracked work this app believes a server job is doing. */
+const runningJobs = (ctx: AppContext): readonly AwaitedJob[] =>
+  ctx.deps.tasks.keys().flatMap((key) => {
+    const state = ctx.deps.tasks.get(key);
+    return state.status === "running" && state.jobId ? [{ key, jobId: state.jobId }] : [];
+  });
+
+/**
+ * A job the app was waiting on that the server no longer lists — dismissed
+ * elsewhere, pruned, or never stored — will never report back. Left alone it
+ * spins forever; failing it hands the user the retry button.
+ */
+const failLostJobs = (
+  ctx: AppContext,
+  awaited: readonly AwaitedJob[],
+  listed: readonly JobView[],
+): void => {
+  const present = new Set(listed.map((job) => job.id));
+  const tasks = ctx.deps.tasks;
+  awaited
+    .filter(({ key, jobId }) => !present.has(jobId) && tasks.get(key).jobId === jobId)
+    .filter(({ key }) => tasks.isRunning(key))
+    .forEach(({ key }) => tasks.adopt(key, { status: "error", error: LOST_JOB_MESSAGE }));
+};
+
 /**
  * Brings the app's picture of in-flight work up to date with the server's.
  *
@@ -451,11 +508,15 @@ export const syncJobs = async (ctx: AppContext): Promise<Result<number, AppError
   const gateway = ctx.deps.jobs;
   if (!gateway) return ok(0);
 
+  // Taken before asking: a job submitted while the list is in flight is not
+  // in the answer, and that must not read as the server having lost it.
+  const awaited = runningJobs(ctx);
   const listed = await gateway.list();
   if (!listed.ok) return listed;
 
   let applied = 0;
   for (const job of listed.value) if (await foldJob(ctx, job)) applied += 1;
+  failLostJobs(ctx, awaited, listed.value);
 
   // The job is gone once it is applied, so the other devices will never see it.
   // Pushing here is what carries a lecture generated on this phone to the rest.
@@ -482,7 +543,20 @@ export interface JobPollingOptions {
   /** How often to look otherwise — enough to notice another device's work. */
   readonly idleMs?: number;
   readonly onError?: (error: AppError) => void;
+  /** Called after every look that worked — what clears a warning a failed one raised. */
+  readonly onSuccess?: () => void;
 }
+
+const SESSION_EXPIRED = "Сессия истекла — войдите снова";
+
+const SYNC_ERROR_TEXT: Readonly<Record<string, string>> = {
+  unauthorized: SESSION_EXPIRED,
+  expired: SESSION_EXPIRED,
+};
+
+/** The sentence a failed look at the server's jobs is shown to the user as. */
+export const describeJobSyncError = (error: AppError): string =>
+  SYNC_ERROR_TEXT[error.kind] ?? error.message;
 
 /**
  * Keeps asking the server what is happening, faster while something is.
@@ -500,7 +574,8 @@ export const startJobPolling = (ctx: AppContext, options: JobPollingOptions = {}
   const tick = async (): Promise<void> => {
     if (stopped) return;
     const result = await syncJobs(ctx);
-    if (!result.ok) options.onError?.(result.error);
+    if (result.ok) options.onSuccess?.();
+    else options.onError?.(result.error);
     if (stopped) return;
     timer = setTimeout(() => void tick(), hasRunningTasks(ctx) ? activeMs : idleMs);
   };
