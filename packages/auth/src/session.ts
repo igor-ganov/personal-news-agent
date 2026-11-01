@@ -44,9 +44,11 @@ const parse = (raw: string): AuthSession | null => {
   const token = str(data.token);
   const expiresAt = str(data.expiresAt);
   const id = str(data.account?.id);
-  const email = str(data.account?.email);
+  // An account is its passkey; the address is an optional label. Requiring it
+  // here signed out every account created without one on each launch.
+  const email = typeof data.account?.email === "string" ? data.account.email : "";
   const createdAt = str(data.account?.createdAt);
-  if (!token || !expiresAt || !id || !email || !createdAt) return null;
+  if (!token || !expiresAt || !id || !createdAt) return null;
 
   return {
     token,

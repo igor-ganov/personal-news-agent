@@ -67,6 +67,19 @@ describe("createSessionStore", () => {
     expect(await store.load()).toBeNull();
   });
 
+  it("keeps an account without an email across app restarts", async () => {
+    const kv = memoryStore();
+    const saved = session("2026-09-22T10:00:00.000Z");
+    const withoutEmail: AuthSession = {
+      ...saved,
+      account: { ...saved.account, email: "", displayName: "agent-acc1" },
+    };
+
+    await createSessionStore(kv, clock).save(withoutEmail);
+
+    expect(await createSessionStore(kv, clock).load()).toEqual(withoutEmail);
+  });
+
   it("выход стирает запись", async () => {
     const kv = memoryStore();
     const store = createSessionStore(kv, clock);
