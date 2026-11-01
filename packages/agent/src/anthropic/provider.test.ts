@@ -1,13 +1,14 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { T0, testContext, testLesson } from "../testing/fixtures.js";
+import { eventsOf, streamOf } from "../testing/stream.js";
 import type { MessagesClient } from "./structured.js";
 import { createAnthropicProviderWith } from "./provider.js";
 
 const emitting = (name: string, input: unknown) => {
-  const create = vi.fn((_params: Anthropic.MessageStreamParams) => ({
-    finalMessage: async () =>
-      ({
+  const create = vi.fn(async (_params: Anthropic.MessageCreateParamsStreaming) =>
+    streamOf(
+      eventsOf({
         id: "msg_1",
         type: "message",
         role: "assistant",
@@ -16,9 +17,10 @@ const emitting = (name: string, input: unknown) => {
         stop_reason: "tool_use",
         stop_sequence: null,
         usage: { input_tokens: 1, output_tokens: 1 },
-      }) as Anthropic.Message,
-  }));
-  return { client: { messages: { stream: create } } satisfies MessagesClient, create };
+      } as Anthropic.Message),
+    ),
+  );
+  return { client: { messages: { create } } satisfies MessagesClient, create };
 };
 
 const context = testContext();
@@ -166,11 +168,9 @@ describe("AnthropicContentProvider", () => {
   it("propagates a provider error instead of throwing", async () => {
     const client: MessagesClient = {
       messages: {
-        stream: () => ({
-          finalMessage: async () => {
-            throw new Error("offline");
-          },
-        }),
+        create: async () => {
+          throw new Error("offline");
+        },
       },
     };
     const provider = createAnthropicProviderWith(client);

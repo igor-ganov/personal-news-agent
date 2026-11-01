@@ -21,8 +21,15 @@ binding = "DB"
 database_name = "pna"
 database_id = "774adde6-a754-468e-b1d3-ddf7d5f4f3fb"
 
-# Каждую минуту: выполнить задания на генерацию. Это единственное место, где
-# они выполняются — у крона пятнадцать минут на вызов, а у продолжения ответа
-# всего тридцать секунд. Ночью тот же обработчик подчищает просроченные строки.
+# Every minute: run queued generation jobs. This is the only place they run —
+# `waitUntil` after a response is cut off at thirty seconds. A cron invocation
+# has fifteen minutes of wall clock, but a schedule under an hour gets only
+# thirty seconds of CPU by default; the nightly run also prunes expired rows.
 [triggers]
 crons = ["* * * * *", "0 3 * * *"]
+
+# Raises the CPU ceiling to the Paid plan's maximum of five minutes. Assembling
+# a long streamed answer is real CPU work, and a tick killed for CPU leaves its
+# job silent until the heartbeat goes stale. The Free plan rejects this key.
+[limits]
+cpu_ms = 300000
