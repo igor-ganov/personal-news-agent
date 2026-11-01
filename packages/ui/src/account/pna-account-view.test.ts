@@ -81,6 +81,14 @@ describe("когда не вошли", () => {
     expect(events).toEqual(["reader@example.com"]);
   });
 
+  it("labels the create button without a dangling preposition when there is no email", async () => {
+    const element = await view({ offerCreate: "" });
+
+    const labels = queryAll<HTMLElement>(element, "ui-button").map((b) => (b.textContent ?? "").trim());
+
+    expect(labels).toContain("Завести аккаунт");
+  });
+
   it("объясняет, что делать, если аккаунт есть, а ключа тут нет", async () => {
     const element = await view({ linkFor: "reader@example.com" });
 

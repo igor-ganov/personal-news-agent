@@ -198,7 +198,7 @@ export class PnaAccountView extends LitElement {
             на другом устройстве. Её можно добавить когда угодно потом.
           </p>
           ${this.notice ? html`<ui-notice tone="info" message=${this.notice}></ui-notice>` : null}
-          ${this.offerCreate ? this.renderOffer(this.offerCreate) : null}
+          ${this.offerCreate === null ? null : this.renderOffer(this.offerCreate)}
           ${this.linkFor ? this.renderDeviceLink(this.linkFor) : null}
           ${this.error ? html`<ui-notice tone="error" message=${this.error}></ui-notice>` : null}
         </section>
@@ -221,7 +221,7 @@ export class PnaAccountView extends LitElement {
           variant="primary"
           ?disabled=${this.busy}
           @click=${() => emit<string>(this, "account-create", email)}
-          >Завести аккаунт на ${email}</ui-button
+          >${email ? `Завести аккаунт на ${email}` : "Завести аккаунт"}</ui-button
         >
       </div>
     `;
