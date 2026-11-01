@@ -24,6 +24,10 @@ export interface FakeAuth {
   /** What each login was asked for — the silent probe is a flag on the input. */
   loginInputs(): readonly { readonly email?: string | null; readonly immediate?: boolean }[];
   session(): AuthSession;
+  /** Runs `hook` while the next pull is in flight — what another tap does meanwhile. */
+  duringNextPull(hook: () => void): void;
+  /** Runs `hook` while the next push is in flight. */
+  duringNextPush(hook: () => void): void;
 }
 
 export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
@@ -46,6 +50,8 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
   const calls: string[] = [];
   const logins: { email?: string | null; immediate?: boolean }[] = [];
   const pending = { ...options.failures };
+  let pullHook: (() => void) | undefined;
+  let pushHook: (() => void) | undefined;
 
   const take = (name: keyof NonNullable<FakeAuthOptions["failures"]>): AuthError | null => {
     const failure = pending[name];
@@ -101,12 +107,22 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
 
     async pull(): Promise<Result<RemoteDocument, AuthError>> {
       calls.push("pull");
+      const snapshot = document;
+      const hook = pullHook;
+      pullHook = undefined;
+      // Yields once, so a concurrent caller gets the chance to interleave.
+      await Promise.resolve();
+      hook?.();
       const failure = take("pull");
-      return failure ? err(failure) : ok(document);
+      return failure ? err(failure) : ok(snapshot);
     },
 
     async push(_token: string, revision: number, body: unknown): Promise<Result<PushOutcome, AuthError>> {
       calls.push(`push:${revision}`);
+      const hook = pushHook;
+      pushHook = undefined;
+      await Promise.resolve();
+      hook?.();
       const failure = take("push");
       if (failure) return err(failure);
 
@@ -125,6 +141,12 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
     client,
     account,
     session: () => session,
+    duringNextPull(hook) {
+      pullHook = hook;
+    },
+    duringNextPush(hook) {
+      pushHook = hook;
+    },
     document: () => document,
     setDocument(body, revision = 1) {
       document = { revision, updatedAt: instantOf("2026-08-20T10:00:00.000Z"), body };

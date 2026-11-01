@@ -4,7 +4,6 @@ import {
   claimState,
   clearedLocalState,
   emptyState,
-  isEmptyState,
   LOCAL_OWNER,
   mergeStates,
   ok,
@@ -64,7 +63,9 @@ export type EntryOutcome =
    * either way — so the app asks instead of guessing: creating an account
    * behind a user who just cancelled would be worse than one more tap.
    */
-  | { readonly kind: "offer-create"; readonly email: string };
+  | { readonly kind: "offer-create"; readonly email: string }
+  /** The phone offered a key the server has never heard of. */
+  | { readonly kind: "stale-key"; readonly email: string };
 
 export type SyncOutcome =
   | { readonly kind: "synced"; readonly revision: number }
@@ -93,8 +94,29 @@ export const createAccountService = (deps: AccountDeps) => {
 
   const adopt = async (state: AppState): Promise<void> => {
     repository.use(state.owner);
-    await repository.save(state);
     store.dispatch({ type: "state/replace", state });
+    await repository.save(state);
+  };
+
+  /**
+   * Folds a copy that came from the server into whatever the store holds right
+   * now. Merging into a snapshot taken earlier dropped every edit made while
+   * the request was in flight.
+   */
+  const absorb = async (remote: AppState): Promise<void> => {
+    store.dispatch({ type: "state/merge", remote });
+    await repository.save(store.getState());
+  };
+
+  /**
+   * One sync at a time. Autosync, the resume handler and a finished job all
+   * ask for one; run side by side they raced each other's revisions.
+   */
+  let queue: Promise<unknown> = Promise.resolve();
+  const serialised = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = queue.then(work);
+    queue = run.catch(() => undefined);
+    return run;
   };
 
   /** Reads both sides of the decision without changing anything. */
@@ -156,12 +178,12 @@ export const createAccountService = (deps: AccountDeps) => {
     if (!first.ok) return first;
     if (first.value.kind === "saved") return ok(first.value.revision);
 
-    // Someone wrote between the pull and the push. Merge their document under
-    // ours — the local side is what the user just did — and push once more.
-    const merged = mergeStates(remoteState(first.value.remote.body) ?? emptyState(), state);
-    await adopt(merged);
+    // Someone wrote between the pull and the push. Fold their document into
+    // the current state — ours wins ties, it is what the user just did — and
+    // push what the store holds now, edits made during the round trip included.
+    await absorb(remoteState(first.value.remote.body) ?? emptyState());
 
-    const second = await client.push(token, first.value.remote.revision, merged);
+    const second = await client.push(token, first.value.remote.revision, store.getState());
     if (!second.ok) return second;
     return ok(second.value.kind === "saved" ? second.value.revision : first.value.remote.revision);
   };
@@ -263,12 +285,14 @@ export const createAccountService = (deps: AccountDeps) => {
       );
       if (signedIn.ok) return signedIn;
 
-      // Nothing usable here. Either the platform had no key at all, or it
-      // offered one the server does not know — a leftover from an account that
-      // no longer exists. For the person holding the phone these are the same
-      // situation, and the answer to both is a new key.
-      if (signedIn.error.kind === "no_credential" || signedIn.error.kind === "unknown_credential")
-        return create();
+      // The platform holds no key at all: this press is how an account starts.
+      if (signedIn.error.kind === "no_credential") return create();
+
+      // The phone offered a key the server does not know — a leftover from an
+      // account that no longer exists. Creating one here made every press add
+      // another account and another entry to the password manager, so the
+      // choice goes back to the user.
+      if (signedIn.error.kind === "unknown_credential") return ok({ kind: "stale-key", email });
 
       // Dismissed. On Android that is a real refusal; in a browser it is also
       // what "nothing to offer" looks like, so the offer to start an account is
@@ -298,23 +322,22 @@ export const createAccountService = (deps: AccountDeps) => {
       if (token) await client.logout(token);
     },
 
-    async sync(): Promise<Result<SyncOutcome, AuthError>> {
-      const active = session;
-      if (!active) return ok({ kind: "offline" });
+    sync: (): Promise<Result<SyncOutcome, AuthError>> =>
+      serialised(async () => {
+        const active = session;
+        if (!active) return ok({ kind: "offline" });
 
-      const pulled = await client.pull(active.token);
-      if (!pulled.ok) return pulled;
+        const pulled = await client.pull(active.token);
+        if (!pulled.ok) return pulled;
 
-      const incoming = remoteState(pulled.value.body);
-      const local = store.getState();
-      // The device's own state wins on collisions: it is what the user just
-      // did, and the remote copy is by definition older than this moment.
-      const merged = incoming ? mergeStates(incoming, local) : local;
-      if (incoming && !isEmptyState(incoming)) await adopt(merged);
+        // The device's own state wins on collisions: it is what the user just
+        // did. Deletions travel as tombstones, so the union keeps them deleted.
+        const incoming = remoteState(pulled.value.body);
+        if (incoming) await absorb(incoming);
 
-      const pushed = await push(active.token, pulled.value.revision, merged);
-      return pushed.ok ? ok({ kind: "synced", revision: pushed.value }) : pushed;
-    },
+        const pushed = await push(active.token, pulled.value.revision, store.getState());
+        return pushed.ok ? ok({ kind: "synced", revision: pushed.value }) : pushed;
+      }),
   };
 };
 

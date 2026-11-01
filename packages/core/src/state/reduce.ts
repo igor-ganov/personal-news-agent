@@ -3,6 +3,7 @@ import type { AttemptId, DigestId, LessonId, ProgramId, QuizId, SourceId, TopicI
 import type { AppState } from "../model/state.js";
 import { programLessons } from "../skills/progress.js";
 import { descendantIdsOf } from "../topics/tree.js";
+import { mergeStates } from "../accounts/claim.js";
 import type { Action } from "./actions.js";
 
 const without = <K extends string, V>(
@@ -52,6 +53,9 @@ export const reduce = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case "state/replace":
       return action.state;
+
+    case "state/merge":
+      return { ...mergeStates(action.remote, state), owner: state.owner };
 
     case "topics/upsert":
       return { ...state, topics: { ...state.topics, [action.topic.id]: action.topic } };

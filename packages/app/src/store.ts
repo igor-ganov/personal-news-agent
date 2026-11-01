@@ -1,4 +1,4 @@
-import { reduce, type Action, type AppState } from "@pna/core";
+import { recordDeletions, reduce, systemClock, type Action, type AppState, type Clock } from "@pna/core";
 
 export type Listener = (state: AppState) => void;
 
@@ -15,9 +15,16 @@ export interface Store {
   subscribe(listener: Listener): () => void;
 }
 
+/**
+ * Actions that bring in a whole other copy of the state. What they drop was not
+ * deleted by anyone here, so they leave no tombstones behind.
+ */
+const WHOLESALE: ReadonlySet<Action["type"]> = new Set(["state/replace", "state/merge"]);
+
 export const createStore = (
   initial: AppState,
   onError: (error: unknown) => void = () => {},
+  clock: Clock = systemClock,
 ): Store => {
   let state = initial;
   const listeners = new Set<Listener>();
@@ -26,7 +33,8 @@ export const createStore = (
     getState: () => state,
 
     dispatch(action) {
-      const next = reduce(state, action);
+      const reduced = reduce(state, action);
+      const next = WHOLESALE.has(action.type) ? reduced : recordDeletions(state, reduced, clock.now());
       if (next === state) return state;
       state = next;
       for (const listener of [...listeners]) {

@@ -29,6 +29,7 @@ const titles = (state: AppState): string[] => Object.keys(state.topics).sort();
 
 interface Setup {
   readonly service: AccountService;
+  readonly store: ReturnType<typeof createStore>;
   readonly auth: FakeAuth;
   readonly kv: KeyValueStore;
   readonly sessions: SessionStore;
@@ -48,6 +49,7 @@ const setup = (options: { local?: AppState; auth?: FakeAuth } = {}): Setup => {
     kv,
     sessions,
     repository,
+    store,
     service: createAccountService({ client: auth.client, sessions, repository, store }),
     state: () => store.getState(),
   };
@@ -302,6 +304,48 @@ describe("синхронизация", () => {
     expect(titles(s.auth.document().body as AppState)).toEqual(["t_local", "t_other"]);
   });
 
+  it("keeps an edit made while the sync was talking to the server", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+    await s.service.register({ email: "reader@example.com" });
+    auth.setDocument(stateWith("t_other"), s.auth.document().revision);
+
+    // The first push loses a revision race; the user types meanwhile.
+    auth.duringNextPull(() => auth.setDocument(stateWith("t_other"), 7));
+    auth.duringNextPush(() => {
+      s.store.dispatch({ type: "topics/upsert", topic: makeTopic({ id: topicId("t_typed"), title: "t_typed" }) });
+    });
+    await s.service.sync();
+
+    expect(titles(s.state())).toEqual(["t_other", "t_typed"]);
+    expect(titles(s.auth.document().body as AppState)).toEqual(["t_other", "t_typed"]);
+  });
+
+  it("carries a deletion to the account instead of pulling the topic back", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+    await s.service.register({ email: "reader@example.com" });
+    s.store.dispatch({ type: "topics/upsert", topic: makeTopic({ id: topicId("t_gone"), title: "t_gone" }) });
+    await s.service.sync();
+
+    s.store.dispatch({ type: "topics/remove", id: topicId("t_gone") });
+    await s.service.sync();
+
+    expect(titles(s.state())).toEqual([]);
+    expect(titles(s.auth.document().body as AppState)).toEqual([]);
+  });
+
+  it("runs concurrent syncs one after another, never interleaved", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+    await s.service.register({ email: "reader@example.com" });
+    const before = auth.calls().length;
+
+    await Promise.all([s.service.sync(), s.service.sync()]);
+
+    expect(auth.calls().slice(before)).toEqual(["pull", "push:1", "pull", "push:2"]);
+  });
+
   it("сетевая ошибка остаётся ошибкой", async () => {
     const auth = fakeAuthClient({ failures: { pull: authError("network", "Нет связи") } });
     const s = setup({ auth });
@@ -408,7 +452,7 @@ describe("continueWith — одна дверь", () => {
     expect(auth.loginInputs()[0]?.immediate).toBe(false);
   });
 
-  it("ключ от удалённого аккаунта — то же самое, что ключа нет", async () => {
+  it("does not silently create an account when the phone offers a key the server does not know", async () => {
     const auth = fakeAuthClient({
       failures: { login: authError("unknown_credential", "Этот ключ не привязан к аккаунту") },
     });
@@ -416,10 +460,10 @@ describe("continueWith — одна дверь", () => {
 
     const outcome = await s.service.continueWith({});
 
-    // Менеджер паролей помнит ключ, сервер о нём не знает. Тупика быть не
-    // должно: заводим новый ключ и новый аккаунт.
-    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
-    expect(auth.calls()).toContain("register");
+    // A leftover key used to turn every press into one more account and one
+    // more entry in the password manager. The user decides instead.
+    expect(outcome).toEqual({ ok: true, value: { kind: "stale-key", email: "" } });
+    expect(auth.calls()).not.toContain("register");
   });
 
   it("без ключа заводит аккаунт, не спрашивая почту", async () => {

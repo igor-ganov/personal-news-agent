@@ -1,6 +1,7 @@
 import { accountOwner, type Owner } from "../model/account.js";
 import type { AccountId } from "../model/ids.js";
 import { STATE_VERSION, type AppState } from "../model/state.js";
+import { mergeCollection, unionTombstones } from "../sync/tombstones.js";
 
 /**
  * How the data already on the device is reconciled with the data the account
@@ -60,11 +61,6 @@ export const summariseClaim = (local: AppState, account: AppState): ClaimSummary
   suggested: "merge",
 });
 
-const mergeRecords = <K extends string, V>(
-  base: Readonly<Record<K, V>>,
-  incoming: Readonly<Record<K, V>>,
-): Record<K, V> => ({ ...base, ...incoming });
-
 /**
  * Unions two states, letting `winner` decide anything both sides hold.
  *
@@ -76,18 +72,22 @@ const mergeRecords = <K extends string, V>(
  * Settings are taken whole rather than merged field by field: half of one
  * configuration and half of another is a configuration nobody chose.
  */
-export const mergeStates = (base: AppState, winner: AppState): AppState => ({
-  version: STATE_VERSION,
-  owner: winner.owner,
-  topics: mergeRecords(base.topics, winner.topics),
-  sources: mergeRecords(base.sources, winner.sources),
-  digests: mergeRecords(base.digests, winner.digests),
-  programs: mergeRecords(base.programs, winner.programs),
-  lessonContent: mergeRecords(base.lessonContent, winner.lessonContent),
-  quizzes: mergeRecords(base.quizzes, winner.quizzes),
-  attempts: mergeRecords(base.attempts, winner.attempts),
-  settings: isEmptyState(winner) ? base.settings : winner.settings,
-});
+export const mergeStates = (base: AppState, winner: AppState): AppState => {
+  const deleted = unionTombstones(base.deleted ?? {}, winner.deleted ?? {});
+  return {
+    version: STATE_VERSION,
+    owner: winner.owner,
+    topics: mergeCollection("topics", base.topics, winner.topics, deleted),
+    sources: mergeCollection("sources", base.sources, winner.sources, deleted),
+    digests: mergeCollection("digests", base.digests, winner.digests, deleted),
+    programs: mergeCollection("programs", base.programs, winner.programs, deleted),
+    lessonContent: mergeCollection("lessonContent", base.lessonContent, winner.lessonContent, deleted),
+    quizzes: mergeCollection("quizzes", base.quizzes, winner.quizzes, deleted),
+    attempts: mergeCollection("attempts", base.attempts, winner.attempts, deleted),
+    settings: isEmptyState(winner) ? base.settings : winner.settings,
+    deleted,
+  };
+};
 
 export interface ClaimInput {
   readonly local: AppState;
@@ -143,4 +143,5 @@ export const clearedLocalState = (local: AppState): AppState => ({
   lessonContent: {},
   quizzes: {},
   attempts: {},
+  deleted: {},
 });

@@ -13,6 +13,8 @@ import type { Topic } from "../model/topic.js";
  */
 export type Action =
   | { readonly type: "state/replace"; readonly state: AppState }
+  /** Folds another copy of the state into the current one; the current side wins ties. */
+  | { readonly type: "state/merge"; readonly remote: AppState }
   | { readonly type: "topics/upsert"; readonly topic: Topic }
   | { readonly type: "topics/upsert-many"; readonly topics: readonly Topic[] }
   | { readonly type: "topics/remove"; readonly id: TopicId }

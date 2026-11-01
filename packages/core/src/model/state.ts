@@ -13,9 +13,10 @@ import type { QuizAttempt, Quiz } from "./quiz.js";
 import type { LessonContent, SkillProgram } from "./skill.js";
 import type { Source } from "./source.js";
 import type { Topic } from "./topic.js";
+import type { Tombstones } from "../sync/tombstones.js";
 
 /** Bumped whenever the persisted shape changes; see @pna/storage migrations. */
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export interface Settings {
   /** Which content provider implementation is active. */
@@ -57,6 +58,8 @@ export interface AppState {
   readonly quizzes: Readonly<Record<QuizId, Quiz>>;
   readonly attempts: Readonly<Record<AttemptId, QuizAttempt>>;
   readonly settings: Settings;
+  /** Records deleted on some device, so that a merge does not bring them back. */
+  readonly deleted: Tombstones;
 }
 
 export const emptyState = (owner: Owner = LOCAL_OWNER): AppState => ({
@@ -70,4 +73,5 @@ export const emptyState = (owner: Owner = LOCAL_OWNER): AppState => ({
   quizzes: {},
   attempts: {},
   settings: defaultSettings(),
+  deleted: {},
 });

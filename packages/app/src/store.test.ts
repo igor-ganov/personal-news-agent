@@ -1,4 +1,4 @@
-import { emptyState, type TopicId } from "@pna/core";
+import { emptyState, fixedClock, type TopicId } from "@pna/core";
 import { describe, expect, it, vi } from "vitest";
 import { createStore } from "./store.js";
 import { T0 } from "./testing/harness.js";
@@ -85,5 +85,28 @@ describe("createStore", () => {
     store.dispatch({ type: "topics/upsert", topic: topic("a") });
     store.dispatch({ type: "topics/upsert", topic: topic("b") });
     expect(seen).toEqual([1, 2, 2]);
+  });
+});
+
+describe("createStore deletions", () => {
+  it("remembers a deleted topic so that a sync cannot bring it back", () => {
+    const store = createStore(emptyState(), () => {}, fixedClock(T0));
+    store.dispatch({ type: "topics/upsert", topic: topic("a") });
+
+    store.dispatch({ type: "topics/remove", id: "a" as TopicId });
+
+    expect(store.getState().deleted).toEqual({ "topics:a": T0 });
+  });
+
+  it("merges a remote copy without dropping what changed here meanwhile", () => {
+    const store = createStore(emptyState(), () => {}, fixedClock(T0));
+    store.dispatch({ type: "topics/upsert", topic: topic("local") });
+
+    store.dispatch({
+      type: "state/merge",
+      remote: { ...emptyState(), topics: { [topic("remote").id]: topic("remote") } },
+    });
+
+    expect(Object.keys(store.getState().topics).sort()).toEqual(["local", "remote"]);
   });
 });

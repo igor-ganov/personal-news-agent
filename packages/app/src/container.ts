@@ -104,7 +104,7 @@ export const bootstrap = async (options: BootstrapOptions): Promise<Bootstrapped
   const initial: AppState = loaded.ok && loaded.value ? loaded.value : emptyState();
   const loadWarning = loaded.ok ? null : loaded.error.message;
 
-  const store = createStore(initial, options.onError);
+  const store = createStore(initial, options.onError, options.clock ?? systemClock);
   const saver = debouncedSaver(repository, options.saveDelayMs ?? 500, {
     ...(options.onSaveError
       ? { onError: (error) => options.onSaveError?.(error.message) }

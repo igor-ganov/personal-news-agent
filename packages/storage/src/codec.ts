@@ -24,6 +24,8 @@ export type Migration = (raw: Record<string, unknown>) => Record<string, unknown
  */
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   1: (raw) => ({ ...raw, version: 2, owner: { kind: "local" } }),
+  // v2 → v3 starts remembering deletions; nothing was deleted before it knew how.
+  2: (raw) => ({ ...raw, version: 3, deleted: {} }),
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -65,6 +67,7 @@ const hydrate = (raw: Record<string, unknown>): AppState => {
     quizzes: collection(raw["quizzes"]) as AppState["quizzes"],
     attempts: collection(raw["attempts"]) as AppState["attempts"],
     settings: { ...base.settings, ...defaultSettings(), ...settings } as AppState["settings"],
+    deleted: collection(raw["deleted"]) as AppState["deleted"],
   };
 };
 
