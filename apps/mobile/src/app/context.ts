@@ -46,4 +46,10 @@ export class ConnectedElement extends LitElement {
   protected isBusy(key: string): boolean {
     return this.ctx.deps.tasks.isRunning(key);
   }
+
+  /** When a running task started (ISO instant), or "" — what a status timer counts from. */
+  protected taskSince(key: string): string {
+    const state = this.ctx.deps.tasks.get(key);
+    return state.status === "running" ? (state.since ?? "") : "";
+  }
 }

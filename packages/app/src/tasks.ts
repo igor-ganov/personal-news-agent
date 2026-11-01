@@ -24,11 +24,23 @@ export interface TaskState {
    * never land here.
    */
   readonly result: unknown;
+  /**
+   * When the running work started (ISO instant), so a screen can say how long
+   * it has been going and the app can give up on work that never ends. Set
+   * only while running; kept across re-adopts of the same running work.
+   */
+  readonly since: string | null;
 }
 
-const IDLE: TaskState = { status: "idle", error: null, jobId: null, result: null };
+const IDLE: TaskState = { status: "idle", error: null, jobId: null, result: null, since: null };
 
 const stateOf = (over: Partial<TaskState>): TaskState => ({ ...IDLE, ...over });
+
+/** The start of running work: what the caller knows, else what was already known, else now. */
+const startOf = (current: TaskState, next: Partial<TaskState>, now: () => string): string | null =>
+  next.status !== "running"
+    ? null
+    : next.since ?? (current.status === "running" ? current.since : null) ?? now();
 
 export interface TaskTracker {
   get(key: string): TaskState;
@@ -43,9 +55,15 @@ export interface TaskTracker {
 }
 
 const sameState = (a: TaskState, b: TaskState): boolean =>
-  a.status === b.status && a.error === b.error && a.jobId === b.jobId && a.result === b.result;
+  a.status === b.status &&
+  a.error === b.error &&
+  a.jobId === b.jobId &&
+  a.result === b.result &&
+  a.since === b.since;
 
-export const createTaskTracker = (): TaskTracker => {
+const systemNow = (): string => new Date().toISOString();
+
+export const createTaskTracker = (now: () => string = systemNow): TaskTracker => {
   const states = new Map<string, TaskState>();
   const inFlight = new Map<string, Promise<unknown>>();
   const listeners = new Set<() => void>();
@@ -70,7 +88,7 @@ export const createTaskTracker = (): TaskTracker => {
       const existing = inFlight.get(key);
       if (existing) return existing as Promise<T>;
 
-      set(key, stateOf({ status: "running" }));
+      set(key, stateOf({ status: "running", since: now() }));
       const promise = work()
         .then((value) => {
           set(key, stateOf({ status: "done" }));
@@ -95,7 +113,8 @@ export const createTaskTracker = (): TaskTracker => {
     },
 
     adopt(key, state) {
-      set(key, stateOf(state));
+      const current = states.get(key) ?? IDLE;
+      set(key, stateOf({ ...state, since: startOf(current, state, now) }));
     },
 
     reset(key) {

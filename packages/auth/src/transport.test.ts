@@ -122,4 +122,20 @@ describe("createTransport", () => {
 
     expect(await transport.request("/auth/logout", { method: "POST" })).toEqual({ ok: true, value: {} });
   });
+
+  it("gives up on a request the server never answers and reports it as a network error", async () => {
+    // A server that accepts the connection and never answers; only the abort ends it.
+    const hanging: FetchLike = (_path, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      });
+    const transport = createTransport({ baseUrl: "https://api.example", fetch: hanging, timeoutMs: 5 });
+
+    const result = await transport.request("/jobs", { method: "POST", body: {} });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: "network", message: "Сервер не ответил вовремя" },
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import type { ProgramId, ProgramSummary } from "@pna/core";
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { emit } from "../events.js";
 import { CONTINUATION_LABEL, formatPercent, formatSessions } from "../format/labels.js";
 import { baseCss } from "../styles/tokens.js";
@@ -7,18 +7,41 @@ import "../components/ui-button.js";
 import "../components/ui-chip.js";
 import "../components/ui-notice.js";
 import "../components/ui-progress.js";
+import "../components/ui-task-status.js";
 
-/** The skills half of a topic: the programs the user is running. */
+/**
+ * Where the topic's program generation stands. A plan that has come back is
+ * not here: the screen opens the plan editor for it instead.
+ */
+export type ProgramTaskView =
+  | { readonly kind: "idle" }
+  | { readonly kind: "running"; readonly since: string }
+  | { readonly kind: "error"; readonly message: string };
+
+const IDLE: ProgramTaskView = { kind: "idle" };
+
+export const PROGRAM_RUNNING_HINT = "Агент составляет план — можно закрыть приложение, результат придёт сам";
+
+/**
+ * The skills half of a topic: the programs the user is running, and the one
+ * being drafted, if any.
+ *
+ * The draft's status is shown whatever the screen was doing before: after a
+ * restart the only trace of a plan in progress is this card.
+ */
 export class PnaProgramList extends LitElement {
   static override properties = {
     programs: { type: Array },
+    task: { type: Object },
   };
 
   declare programs: readonly ProgramSummary[];
+  declare task: ProgramTaskView;
 
   constructor() {
     super();
     this.programs = [];
+    this.task = IDLE;
   }
 
   static override styles = [
@@ -66,12 +89,42 @@ export class PnaProgramList extends LitElement {
       .new ui-button {
         width: 100%;
       }
+
+      .task-actions {
+        display: flex;
+        gap: var(--pna-gap-sm);
+        justify-content: center;
+      }
     `,
   ];
 
+  private renderTask() {
+    const task = this.task;
+    if (task.kind === "running")
+      return html`<ui-task-status
+        label="Составляем программу"
+        .since=${task.since}
+        hint=${PROGRAM_RUNNING_HINT}
+      ></ui-task-status>`;
+
+    if (task.kind === "error")
+      return html`<ui-notice tone="error" .message=${task.message}>
+        <span slot="actions" class="task-actions">
+          <ui-button size="sm" variant="primary" @click=${() => emit(this, "program-retry", null)}
+            >Повторить</ui-button
+          >
+          <ui-button size="sm" @click=${() => emit(this, "program-dismiss", null)}>Убрать</ui-button>
+        </span>
+      </ui-notice>`;
+
+    return nothing;
+  }
+
   override render() {
+    const running = this.task.kind === "running";
     return html`
       <div class="programs">
+      ${this.renderTask()}
       ${this.programs.length === 0
         ? html`<ui-notice
             tone="empty"
@@ -102,7 +155,12 @@ export class PnaProgramList extends LitElement {
           )}
 
         <div class="new">
-          <ui-button variant="primary" @click=${() => emit(this, "program-new", null)}
+          <ui-button
+            variant="primary"
+            ?disabled=${running}
+            @click=${() => {
+              if (!running) emit(this, "program-new", null);
+            }}
             >Новая программа</ui-button
           >
         </div>

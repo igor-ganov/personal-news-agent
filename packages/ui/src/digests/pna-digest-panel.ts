@@ -6,6 +6,7 @@ import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-chip.js";
 import "../components/ui-notice.js";
+import "../components/ui-task-status.js";
 import "./pna-digest-view.js";
 
 /**
@@ -24,6 +25,7 @@ export class PnaDigestPanel extends LitElement {
   static override properties = {
     digests: { type: Object },
     busyPeriods: { type: Array },
+    busySince: { type: Object },
     error: { type: String },
     period: { type: String },
     _selected: { state: true },
@@ -31,6 +33,8 @@ export class PnaDigestPanel extends LitElement {
 
   declare digests: Readonly<Partial<Record<DigestPeriod, readonly Digest[]>>>;
   declare busyPeriods: readonly DigestPeriod[];
+  /** When each running digest started (ISO instant), for the timer. */
+  declare busySince: Readonly<Partial<Record<DigestPeriod, string>>>;
   declare error: string;
   declare period: DigestPeriod;
   /** Which digest is open, per period. */
@@ -41,6 +45,7 @@ export class PnaDigestPanel extends LitElement {
     super();
     this.digests = {};
     this.busyPeriods = [];
+    this.busySince = {};
     this.error = "";
     this.period = "day";
     this._selected = {};
@@ -175,6 +180,12 @@ export class PnaDigestPanel extends LitElement {
           </ui-button>
         </div>
 
+        ${busy
+          ? html`<ui-task-status
+              label="Собираем дайджест"
+              .since=${this.busySince[this.period] ?? ""}
+            ></ui-task-status>`
+          : null}
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}
         ${this.renderHistory(history, selectedId)}
         ${current

@@ -6,7 +6,7 @@ import {
   type Schedule,
   type SkillProgram,
 } from "@pna/core";
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, type PropertyValues } from "lit";
 import { emit } from "../events.js";
 import {
   CONTINUATION_HINT,
@@ -36,6 +36,7 @@ export class PnaProgramWizard extends LitElement {
     startDay: { type: String },
     busy: { type: Boolean },
     error: { type: String },
+    initial: { type: Object },
     _intent: { state: true },
     _weeks: { state: true },
     _sessions: { state: true },
@@ -48,6 +49,11 @@ export class PnaProgramWizard extends LitElement {
   declare startDay: string;
   declare busy: boolean;
   declare error: string;
+  /**
+   * A request to start from — the one a failed or still running plan was made
+   * with, so asking again does not mean typing it all again.
+   */
+  declare initial: ProgramRequest | undefined;
   private declare _intent: string;
   private declare _weeks: number;
   private declare _sessions: number;
@@ -61,6 +67,7 @@ export class PnaProgramWizard extends LitElement {
     this.startDay = "";
     this.busy = false;
     this.error = "";
+    this.initial = undefined;
     this._intent = "";
     this._weeks = 4;
     this._sessions = 3;
@@ -171,6 +178,26 @@ export class PnaProgramWizard extends LitElement {
         <span>${value}${suffix}</span>
       </div>
     `;
+  }
+
+  /** The request last copied into the form, so a re-render does not undo typing. */
+  private prefilled = "";
+
+  override willUpdate(changed: PropertyValues<this>): void {
+    if (!changed.has("initial") || !this.initial) return;
+    const fingerprint = JSON.stringify(this.initial);
+    if (fingerprint === this.prefilled) return;
+    this.prefilled = fingerprint;
+    this.prefill(this.initial);
+  }
+
+  private prefill(request: ProgramRequest): void {
+    this._intent = request.intent;
+    this._weeks = request.schedule.intensity.weeks;
+    this._sessions = request.schedule.intensity.sessionsPerWeek;
+    this._minutes = request.schedule.intensity.minutesPerSession;
+    this._continuation = request.continuation;
+    this._basedOn = request.basedOn;
   }
 
   private submit(): void {

@@ -25,15 +25,16 @@ export interface HarnessOptions {
 /** An app context with everything deterministic: fixed clock, counted ids, no network. */
 export const harness = (overrides: HarnessOptions = {}): Harness => {
   const store = createStore(overrides.state ?? emptyState());
+  const clock = fixedClock(overrides.now ?? T0);
   const ctx: AppContext = {
     store,
     deps: {
-      clock: fixedClock(overrides.now ?? T0),
+      clock,
       ids: sequentialIds(),
       provider: overrides.provider ?? createMockProvider(),
       repository: createStateRepository(memoryStore()),
       secrets: createSecretStore(memoryStore()),
-      tasks: createTaskTracker(),
+      tasks: createTaskTracker(clock.now),
       account: null,
       jobs: overrides.jobs ?? null,
     },

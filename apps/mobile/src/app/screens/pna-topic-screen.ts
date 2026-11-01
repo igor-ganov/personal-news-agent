@@ -13,13 +13,17 @@ import {
   forgetSource,
   generateDigest,
   heldPlan,
+  pendingRequest,
   programTaskKey,
   refreshTopicSources,
   sourceTaskKey,
+  type TaskState,
+  type TaskStatus,
 } from "@pna/app";
 import {
   ancestorsOf,
   applyPlanEdit,
+  calendarDay,
   capacityReport,
   childrenOf,
   draftLessonMinutes,
@@ -33,7 +37,14 @@ import {
   type TopicId,
   type UserSourceDraft,
 } from "@pna/core";
-import { routeHref, type ProgramRequest, type SourceStatusChange, type TopicFormValue, type TopicTab } from "@pna/ui";
+import {
+  routeHref,
+  type ProgramRequest,
+  type ProgramTaskView,
+  type SourceStatusChange,
+  type TopicFormValue,
+  type TopicTab,
+} from "@pna/ui";
 import { css, html, type TemplateResult } from "lit";
 import { ConnectedElement } from "../context.js";
 import { navigate } from "../router.js";
@@ -47,6 +58,18 @@ const TABS = [
 ];
 
 type SkillsMode = "list" | "wizard";
+
+const PERIODS: readonly DigestPeriod[] = ["day", "week", "month", "year"];
+
+/** How each tracker status reads on the skills tab; a held plan is the editor's, not this. */
+const PROGRAM_TASK: Readonly<Record<TaskStatus, (state: TaskState) => ProgramTaskView>> = {
+  idle: () => ({ kind: "idle" }),
+  done: () => ({ kind: "idle" }),
+  running: (state) => ({ kind: "running", since: state.since ?? "" }),
+  error: (state) => ({ kind: "error", message: state.error ?? "Не получилось" }),
+};
+
+const programTaskView = (state: TaskState): ProgramTaskView => PROGRAM_TASK[state.status](state);
 
 /**
  * A topic: its digests, its programs, its sources and its own settings.
@@ -156,6 +179,9 @@ export class PnaTopicScreen extends ConnectedElement {
   private requestPlan(request: ProgramRequest): void {
     this._planError = "";
     this._edited = null;
+    // Back to the list: the status card is what shows the plan being drafted,
+    // and it is also what the screen opens on after a restart.
+    this._mode = "list";
     void draftProgram(this.ctx, {
       topicId: this.topicId,
       intent: request.intent,
@@ -163,6 +189,33 @@ export class PnaTopicScreen extends ConnectedElement {
       basedOn: request.basedOn,
       continuation: request.continuation,
     });
+  }
+
+  /** What the topic's last plan request asked for, if the tracker still knows. */
+  private lastRequest(): ProgramRequest | undefined {
+    const meta = pendingRequest("program", this.ctx.deps.tasks.get(programTaskKey(this.topicId)));
+    return meta
+      ? {
+          intent: meta.intent,
+          schedule: meta.schedule,
+          basedOn: meta.basedOn,
+          continuation: meta.continuation,
+        }
+      : undefined;
+  }
+
+  /**
+   * Asks again with the same request, starting today rather than on the day the
+   * failed one was made for; without a request, the wizard opens to ask.
+   */
+  private retryPlan(): void {
+    const request = this.lastRequest();
+    if (!request) {
+      this._mode = "wizard";
+      return;
+    }
+    const startDay = calendarDay(this.ctx.deps.clock.now().slice(0, 10));
+    this.requestPlan({ ...request, schedule: { ...request.schedule, startDay } });
   }
 
   /** The plan waiting for this topic, if one has finished generating. */
@@ -240,24 +293,32 @@ export class PnaTopicScreen extends ConnectedElement {
       ></pna-plan-editor>`;
     }
 
-    if (this._mode === "wizard") {
+    const task = programTaskView(this.ctx.deps.tasks.get(key));
+
+    // A plan being drafted is never hidden behind the wizard: one request at a
+    // time, and its status card is the only place it shows.
+    if (this._mode === "wizard" && task.kind !== "running") {
       return html`<pna-program-wizard
         .availableBases=${(overview?.programs ?? []).map((p) => p.program)}
         .startDay=${this.ctx.deps.clock.now().slice(0, 10)}
-        ?busy=${this.isBusy(key)}
+        .initial=${this.lastRequest()}
         .error=${this.taskError(key)}
         @program-request=${(e: CustomEvent<ProgramRequest>) => this.requestPlan(e.detail)}
       ></pna-program-wizard>`;
     }
 
+    // The "new program" action only opens the wizard. It used to dismiss the job under
+    // the key, which deleted a plan the server was still writing.
     return html`<pna-program-list
       .programs=${overview?.programs ?? []}
+      .task=${task}
       @program-open=${(e: CustomEvent<ProgramId>) =>
         navigate(routeHref({ name: "program", programId: e.detail }))}
       @program-new=${() => {
         this._mode = "wizard";
-        void dismissJob(this.ctx, key);
       }}
+      @program-retry=${() => this.retryPlan()}
+      @program-dismiss=${() => void dismissJob(this.ctx, key)}
     ></pna-program-list>`;
   }
 
@@ -348,16 +409,18 @@ export class PnaTopicScreen extends ConnectedElement {
 
     switch (this.tab) {
       case "news": {
-        const busy = (["day", "week", "month", "year"] as DigestPeriod[]).filter((period) =>
-          this.isBusy(digestTaskKey(this.topicId, period)),
+        const busy = PERIODS.filter((period) => this.isBusy(digestTaskKey(this.topicId, period)));
+        const busySince = Object.fromEntries(
+          busy.map((period) => [period, this.taskSince(digestTaskKey(this.topicId, period))]),
         );
-        const errors = (["day", "week", "month", "year"] as DigestPeriod[])
+        const errors = PERIODS
           .map((period) => this.taskError(digestTaskKey(this.topicId, period)))
           .filter((message) => message.length > 0);
 
         return html`<pna-digest-panel
           .digests=${overview.digests}
           .busyPeriods=${busy}
+          .busySince=${busySince}
           .error=${errors[0] ?? ""}
           @digest-request=${(e: CustomEvent<DigestPeriod>) =>
             void generateDigest(this.ctx, { topicId: this.topicId, period: e.detail })}
@@ -369,6 +432,7 @@ export class PnaTopicScreen extends ConnectedElement {
         return html`<pna-source-list
           .sources=${overview.sources}
           ?busy=${this.isBusy(key)}
+          .since=${this.taskSince(key)}
           .error=${this.taskError(key)}
           @source-refresh=${() =>
             void refreshTopicSources(this.ctx, this.topicId, { force: true })}

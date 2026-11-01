@@ -17,7 +17,22 @@ export interface Transport {
 export interface TransportOptions {
   readonly baseUrl: string;
   readonly fetch?: FetchLike;
+  /** How long a single request may take before it counts as a dead network. */
+  readonly timeoutMs?: number;
 }
+
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+const TIMED_OUT = "Сервер не ответил вовремя";
+
+const isTimeout = (error: unknown): boolean =>
+  error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError");
+
+const networkFailure = (error: unknown): AuthError =>
+  authError(
+    "network",
+    isTimeout(error) ? TIMED_OUT : (error instanceof Error && error.message) || "Сервер недоступен",
+  );
 
 /**
  * The only place that speaks HTTP.
@@ -29,6 +44,7 @@ export interface TransportOptions {
 export const createTransport = (options: TransportOptions): Transport => {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const doFetch: FetchLike = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 
   return {
     baseUrl,
@@ -43,9 +59,12 @@ export const createTransport = (options: TransportOptions): Transport => {
           method: request.method ?? "GET",
           headers,
           ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+          // A request that hangs would otherwise leave whatever waits on it
+          // spinning for as long as the process lives.
+          signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (error) {
-        return err(authError("network", (error as Error)?.message || "Сервер недоступен"));
+        return err(networkFailure(error));
       }
 
       const payload = (await response.json().catch(() => null)) as

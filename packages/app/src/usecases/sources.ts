@@ -18,6 +18,7 @@ import {
 } from "@pna/core";
 import type { AppContext } from "../container.js";
 import { domainError, type AppError } from "../errors.js";
+import type { TaskStatus } from "../tasks.js";
 import { runGeneration, type Generation, type GenerationRequest } from "./jobs.js";
 
 export const DISCOVERY_LIMIT = 8;
@@ -81,14 +82,26 @@ export const refreshTopicSources = async (
   return runGeneration(ctx, request.value);
 };
 
+/**
+ * Whether opening a topic may start discovery on its own.
+ *
+ * Staleness itself is decided by `sourcesRequest` (empty list, or older than
+ * `sourceRefreshDays`). What is decided here is that a failure this session
+ * stays a failure until the user asks again: retrying by itself is what turned
+ * one error into a list that refreshes forever.
+ */
+const HANDS_OFF: readonly TaskStatus[] = ["running", "error"];
+
+const mayAutoRefresh = (ctx: AppContext, topicId: TopicId): boolean =>
+  ctx.store.getState().settings.autoRefreshSources &&
+  !HANDS_OFF.includes(ctx.deps.tasks.get(sourceTaskKey(topicId)).status);
+
 /** Runs discovery only if the list has gone stale; used when a topic is opened. */
 export const ensureSourcesFresh = async (
   ctx: AppContext,
   topicId: TopicId,
-): Promise<Result<Generation<readonly SourceCandidate[]>, AppError>> => {
-  if (!ctx.store.getState().settings.autoRefreshSources) return ok(SKIPPED);
-  return refreshTopicSources(ctx, topicId);
-};
+): Promise<Result<Generation<readonly SourceCandidate[]>, AppError>> =>
+  mayAutoRefresh(ctx, topicId) ? refreshTopicSources(ctx, topicId) : ok(SKIPPED);
 
 export const addSourceByHand = (
   ctx: AppContext,
