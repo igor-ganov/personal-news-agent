@@ -20,6 +20,7 @@ export * from "./components/ui-markdown.js";
 export * from "./components/ui-notice.js";
 export * from "./components/ui-progress.js";
 export * from "./components/ui-qr.js";
+export * from "./components/ui-task-status.js";
 
 export * from "./shell/pna-app-bar.js";
 export * from "./shell/pna-tabs.js";

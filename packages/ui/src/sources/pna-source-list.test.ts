@@ -99,6 +99,18 @@ describe("pna-source-list", () => {
     expect(query(element, "ui-notice")?.getAttribute("tone")).toBe("empty");
   });
 
+  it("says what a running refresh is doing and how long it has been going", async () => {
+    const element = new PnaSourceList();
+    element.sources = [];
+    element.busy = true;
+    element.since = "2026-08-22T10:00:00Z";
+    await mount(element);
+
+    const status = query<HTMLElement & { label: string; since: string }>(element, "ui-task-status");
+    expect(status?.label).toBe("Ищем источники");
+    expect(status?.since).toBe("2026-08-22T10:00:00Z");
+  });
+
   it("shows a provider error", async () => {
     const element = new PnaSourceList();
     element.sources = [source("a")];

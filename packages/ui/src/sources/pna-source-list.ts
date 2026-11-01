@@ -6,6 +6,7 @@ import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-field.js";
 import "../components/ui-notice.js";
+import "../components/ui-task-status.js";
 import "./pna-source-item.js";
 
 /**
@@ -18,6 +19,7 @@ export class PnaSourceList extends LitElement {
   static override properties = {
     sources: { type: Array },
     busy: { type: Boolean },
+    since: { type: String },
     error: { type: String },
     _showBlacklist: { state: true },
     _adding: { state: true },
@@ -27,6 +29,8 @@ export class PnaSourceList extends LitElement {
 
   declare sources: readonly Source[];
   declare busy: boolean;
+  /** When the running refresh started (ISO instant), for the timer. */
+  declare since: string;
   declare error: string;
   private declare _showBlacklist: boolean;
   private declare _adding: boolean;
@@ -37,6 +41,7 @@ export class PnaSourceList extends LitElement {
     super();
     this.sources = [];
     this.busy = false;
+    this.since = "";
     this.error = "";
     this._showBlacklist = false;
     this._adding = false;
@@ -110,6 +115,9 @@ export class PnaSourceList extends LitElement {
           >
         </header>
 
+        ${this.busy
+          ? html`<ui-task-status label="Ищем источники" .since=${this.since}></ui-task-status>`
+          : null}
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}
 
         ${this._adding

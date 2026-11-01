@@ -115,4 +115,14 @@ describe("pna-digest-panel — история", () => {
     expect(text(element)).toContain("Собираю…");
     expect(openHeadline(element)).toBe("Заголовок d3");
   });
+
+  it("times a running digest instead of an anonymous spinner", async () => {
+    const element = await render({ digests: {}, busyPeriods: ["day"] });
+    element.busySince = { day: "2026-08-22T10:00:00Z" };
+    await element.updateComplete;
+
+    const status = query<HTMLElement & { label: string; since: string }>(element, "ui-task-status");
+    expect(status?.label).toBe("Собираем дайджест");
+    expect(status?.since).toBe("2026-08-22T10:00:00Z");
+  });
 });
