@@ -8,3 +8,4 @@ export * from "./transport.js";
 export * from "./client.js";
 export * from "./jobs.js";
 export * from "./session.js";
+export * from "./known-keys.js";

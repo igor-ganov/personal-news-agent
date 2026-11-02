@@ -1,4 +1,4 @@
-import type { AuthClient, AuthError, AuthSession, SessionStore } from "@pna/auth";
+import type { AuthClient, AuthError, AuthSession, KnownKeysStore, SessionStore } from "@pna/auth";
 import {
   accountOwner,
   claimState,
@@ -82,6 +82,8 @@ export type SyncOutcome =
 export interface AccountDeps {
   readonly client: AuthClient;
   readonly sessions: SessionStore;
+  /** The keys this device signs in with, kept across sign-outs. */
+  readonly keys: KnownKeysStore;
   readonly repository: OwnedRepository;
   readonly store: Store;
 }
@@ -96,7 +98,7 @@ const remoteState = (body: unknown): AppState | null => {
 };
 
 export const createAccountService = (deps: AccountDeps) => {
-  const { client, sessions, repository, store } = deps;
+  const { client, sessions, keys, repository, store } = deps;
   let session: AuthSession | null = null;
 
   const adopt = async (state: AppState): Promise<void> => {
@@ -229,29 +231,60 @@ export const createAccountService = (deps: AccountDeps) => {
 
     const strategy: ClaimStrategy = isEmptyState(pending.value.account) ? "keep-local" : "keep-account";
     const applied = await apply(pending.value, strategy);
-    return applied.ok ? ok({ kind: "signed-in", session: applied.value }) : applied;
+    if (!applied.ok) return applied;
+
+    await rememberKeys(applied.value.token);
+    return ok({ kind: "signed-in", session: applied.value });
   };
 
   /** Login failures that mean "this phone has no usable key yet". */
   const NEEDS_ACCOUNT: ReadonlySet<AuthError["kind"]> = new Set(["no_credential", "unknown_credential"]);
 
+  /**
+   * Records which keys the account lists, so the next prompt asks for those
+   * only. Best effort: without the list the prompt simply stays open.
+   */
+  const rememberKeys = async (token: string): Promise<void> => {
+    const details = await client.me(token);
+    if (details.ok) await keys.save(details.value.passkeys.map((key) => key.credentialId));
+  };
+
+  /**
+   * The passkey prompt the app opens with.
+   *
+   * One press, one outcome: a known key signs in, a missing or orphaned key
+   * becomes a new account (an orphaned key belongs to an account that no
+   * longer exists, so there is nothing to sign in to), and a dismissal is
+   * reported so the screen can offer the prompt again.
+   *
+   * Once this device has signed in, the prompt asks for that account's keys
+   * only. Without the filter the phone also offers leftovers from wiped
+   * accounts, and picking one started a second, empty account.
+   */
+  const enter = async (): Promise<Result<LaunchOutcome, AuthError>> => {
+    const known = await keys.load();
+    const signedIn = await enterWith(client.login({ immediate: true, allowCredentials: known }));
+    if (signedIn.ok) return signedIn;
+
+    const kind = signedIn.error.kind;
+    // The remembered keys are gone from the device: forget them and offer what it holds.
+    if (known.length > 0 && kind === "no_credential") {
+      await keys.save([]);
+      return enter();
+    }
+    if (NEEDS_ACCOUNT.has(kind)) return enterWith(client.register({}));
+    if (kind === "cancelled") return ok({ kind: "cancelled" });
+    return signedIn;
+  };
+
   return {
     current: (): AuthSession | null => session,
 
-    /**
-     * The passkey prompt the app opens with.
-     *
-     * One press, one outcome: a known key signs in, a missing or orphaned key
-     * becomes a new account (an orphaned key belongs to an account that no
-     * longer exists, so there is nothing to sign in to), and a dismissal is
-     * reported so the screen can offer the prompt again.
-     */
-    async enter(): Promise<Result<LaunchOutcome, AuthError>> {
-      const signedIn = await enterWith(client.login({ immediate: true }));
-      if (signedIn.ok) return signedIn;
-      if (NEEDS_ACCOUNT.has(signedIn.error.kind)) return enterWith(client.register({}));
-      if (signedIn.error.kind === "cancelled") return ok({ kind: "cancelled" });
-      return signedIn;
+    enter,
+
+    /** Learns the account's keys for a session saved by a build that did not record them. */
+    learnKeys: async (): Promise<void> => {
+      if (session) await rememberKeys(session.token);
     },
 
     /** The same entry, starting a new account outright — for a browser that cannot say "no key". */

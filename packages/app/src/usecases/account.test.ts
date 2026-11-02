@@ -1,4 +1,4 @@
-import { authError, createSessionStore, type SessionStore } from "@pna/auth";
+import { authError, createKnownKeysStore, createSessionStore, type SessionStore } from "@pna/auth";
 import {
   accountId,
   accountOwner,
@@ -50,7 +50,13 @@ const setup = (options: { local?: AppState; auth?: FakeAuth } = {}): Setup => {
     sessions,
     repository,
     store,
-    service: createAccountService({ client: auth.client, sessions, repository, store }),
+    service: createAccountService({
+      client: auth.client,
+      sessions,
+      keys: createKnownKeysStore(kv),
+      repository,
+      store,
+    }),
     state: () => store.getState(),
   };
 };
@@ -393,12 +399,12 @@ describe("два аккаунта на одном устройстве", () => {
     await repository.of(LOCAL_OWNER).save(stateWith("t_first"));
 
     const first = fakeAuthClient();
-    const firstService = createAccountService({ client: first.client, sessions, repository, store });
+    const firstService = createAccountService({ client: first.client, sessions, keys: createKnownKeysStore(kv), repository, store });
     await firstService.register({ email: "first@example.com" });
     await firstService.signOut();
 
     const second = fakeAuthClient({ account: { id: accountId("acc-2"), email: "second@example.com" } });
-    const secondService = createAccountService({ client: second.client, sessions, repository, store });
+    const secondService = createAccountService({ client: second.client, sessions, keys: createKnownKeysStore(kv), repository, store });
     await secondService.register({ email: "second@example.com" });
 
     expect(titles(store.getState())).toEqual([]);
@@ -610,6 +616,41 @@ describe("enter — the passkey prompt the app opens with", () => {
 
     expect(outcome.ok && outcome.value.kind).toBe("signed-in");
     expect(auth.calls()).toContain("register");
+  });
+
+  it("offers only the account's keys next time, so a leftover key cannot start a second account", async () => {
+    const auth = fakeAuthClient({ passkeys: ["cred-valid"] });
+    const s = setup({ auth });
+    await s.service.enter();
+    await s.service.signOut();
+
+    await s.service.enter();
+
+    expect(auth.loginInputs()[1]?.allowCredentials).toEqual(["cred-valid"]);
+  });
+
+  it("offers every key on the device when the remembered one is gone from it", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ auth });
+    await createKnownKeysStore(s.kv).save(["cred-gone"]);
+    auth.setFailure("login", authError("no_credential", "gone"));
+
+    const outcome = await s.service.enter();
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    expect(auth.loginInputs().map((input) => input.allowCredentials ?? [])).toEqual([["cred-gone"], []]);
+    expect(auth.calls()).not.toContain("register");
+  });
+
+  it("learns the keys of a session an older build saved without them", async () => {
+    const auth = fakeAuthClient({ passkeys: ["cred-valid"] });
+    const s = setup({ auth });
+    await s.sessions.save(auth.session());
+    await s.service.restore();
+
+    await s.service.learnKeys();
+
+    expect(await createKnownKeysStore(s.kv).load()).toEqual(["cred-valid"]);
   });
 
   it("reports a dismissed prompt without creating anything", async () => {

@@ -8,8 +8,16 @@ import { accountId, err, instantOf, ok, type Account, type Result } from "@pna/c
  */
 export interface FakeAuthOptions {
   readonly account?: Partial<Account>;
+  /** Credential ids the account lists, as `me` reports them. */
+  readonly passkeys?: readonly string[];
   /** Makes the next call of that name fail with this error, once. */
   readonly failures?: Partial<Record<"register" | "login" | "pull" | "push", AuthError>>;
+}
+
+export interface LoginInput {
+  readonly email?: string | null;
+  readonly immediate?: boolean;
+  readonly allowCredentials?: readonly string[];
 }
 
 export interface FakeAuth {
@@ -22,7 +30,7 @@ export interface FakeAuth {
   /** Arms a failure for the next call of that name — once. */
   setFailure(name: "register" | "login" | "pull" | "push", error: AuthError): void;
   /** What each login was asked for — the silent probe is a flag on the input. */
-  loginInputs(): readonly { readonly email?: string | null; readonly immediate?: boolean }[];
+  loginInputs(): readonly LoginInput[];
   session(): AuthSession;
   /** Runs `hook` while the next pull is in flight — what another tap does meanwhile. */
   duringNextPull(hook: () => void): void;
@@ -48,7 +56,7 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
 
   let document: RemoteDocument = { revision: 0, updatedAt: null, body: null };
   const calls: string[] = [];
-  const logins: { email?: string | null; immediate?: boolean }[] = [];
+  const logins: LoginInput[] = [];
   const pending = { ...options.failures };
   let pullHook: (() => void) | undefined;
   let pushHook: (() => void) | undefined;
@@ -68,7 +76,7 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
       return failure ? err(failure) : ok(session);
     },
 
-    async login(input: { email?: string | null; immediate?: boolean } = {}): Promise<
+    async login(input: LoginInput = {}): Promise<
       Result<AuthSession, AuthError>
     > {
       calls.push("login");
@@ -79,7 +87,15 @@ export const fakeAuthClient = (options: FakeAuthOptions = {}): FakeAuth => {
 
     async me() {
       calls.push("me");
-      return ok({ account, passkeys: [] });
+      return ok({
+        account,
+        passkeys: (options.passkeys ?? []).map((credentialId) => ({
+          credentialId,
+          label: "",
+          createdAt: account.createdAt,
+          lastUsedAt: null,
+        })),
+      });
     },
 
     async logout() {

@@ -7,7 +7,7 @@ import {
   type IdFactory,
 } from "@pna/core";
 import type { ContentProvider } from "@pna/agent";
-import type { AuthClient, JobsClient, SessionStore } from "@pna/auth";
+import { createKnownKeysStore, type AuthClient, type JobsClient, type SessionStore } from "@pna/auth";
 import {
   createOwnedRepository,
   createStateRepository,
@@ -113,10 +113,11 @@ export const bootstrap = async (options: BootstrapOptions): Promise<Bootstrapped
   store.subscribe((state) => saver.save(state));
 
   const account =
-    owned && options.auth
+    options.kv && owned && options.auth
       ? createAccountService({
           client: options.auth.client,
           sessions: options.auth.sessions,
+          keys: createKnownKeysStore(options.kv),
           repository: owned,
           store,
         })

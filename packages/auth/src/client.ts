@@ -82,6 +82,15 @@ const parseDocument = (raw: { revision?: number; updatedAt?: string | null; body
   body: raw.body ?? null,
 });
 
+/** Limits a sign-in prompt to the given keys; an empty list leaves it open. */
+const narrowed = (
+  options: PasskeyRequestOptions,
+  credentialIds: readonly string[],
+): PasskeyRequestOptions =>
+  credentialIds.length === 0
+    ? options
+    : { ...options, allowCredentials: credentialIds.map((id) => ({ id, type: "public-key" })) };
+
 export interface AuthClientOptions {
   readonly transport: Transport;
   readonly passkeys: PasskeyAgent;
@@ -160,9 +169,12 @@ export const createAuthClient = (options: AuthClientOptions) => {
      * `immediate` asks the platform to answer from what it already holds and
      * fail silently otherwise — that is how a fresh device skips a dialog it
      * has no answer for and goes straight to creating a key.
+     *
+     * `allowCredentials` narrows the prompt to keys known to work, so a key
+     * left over from an account the server no longer has is not offered.
      */
     async login(
-      input: { email?: string | null; immediate?: boolean } = {},
+      input: { email?: string | null; immediate?: boolean; allowCredentials?: readonly string[] } = {},
     ): Promise<Result<AuthSession, AuthError>> {
       const email = input.email ? normaliseEmail(input.email) : null;
       if (email !== null && !isPlausibleEmail(email))
@@ -175,7 +187,9 @@ export const createAuthClient = (options: AuthClientOptions) => {
       if (!started.ok) return started;
 
       const assertion = await usePasskey<AuthenticationResponseJson>(() =>
-        passkeys.get(started.value.options, { immediate: input.immediate === true }),
+        passkeys.get(narrowed(started.value.options, input.allowCredentials ?? []), {
+          immediate: input.immediate === true,
+        }),
       );
       if (!assertion.ok) return assertion;
 

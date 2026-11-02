@@ -5,7 +5,7 @@ import { createAccountService } from "./account.js";
 import { startAutoSync, syncNow } from "./sync.js";
 import { addTopic } from "./topics.js";
 import { createOwnedRepository, memoryStore } from "@pna/storage";
-import { createSessionStore } from "@pna/auth";
+import { createKnownKeysStore, createSessionStore } from "@pna/auth";
 
 /**
  * A context signed into a fake account, with the sync pushed through a store we
@@ -19,6 +19,7 @@ const signedIn = async () => {
   const service = createAccountService({
     client: auth.client,
     sessions: createSessionStore(kv),
+    keys: createKnownKeysStore(kv),
     repository: createOwnedRepository(kv),
     store: h.ctx.store,
   });
