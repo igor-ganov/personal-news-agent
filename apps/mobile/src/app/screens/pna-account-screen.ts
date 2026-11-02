@@ -188,6 +188,8 @@ export class PnaAccountScreen extends ConnectedElement {
     this._passkeys = [];
     this._syncedAt = null;
     this._busy = false;
+    // Signed out means back to the passkey prompt the app opens with.
+    globalThis.location.assign("/");
   }
 
   /**

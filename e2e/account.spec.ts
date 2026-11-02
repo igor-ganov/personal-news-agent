@@ -23,48 +23,37 @@ const withAuthenticator = async (page: Page): Promise<void> => {
 const topicButton = (page: Page, title: string) =>
   page.getByRole("button", { name: new RegExp(`^${title}`) });
 
-const openAccount = async (page: Page): Promise<void> => {
-  await page.goto("/#/account");
-};
-
-test("one account, its topics survive a restart, and a deletion reaches the server", async ({ page }) => {
+test("the app opens on a passkey prompt, and the account's topics survive a restart", async ({ page }) => {
   await withAuthenticator(page);
 
-  // A phone with nothing on it: the single door creates the account.
-  await openAccount(page);
-  await page.getByRole("button", { name: LABELS.continue }).click();
-  await page.getByRole("button", { name: LABELS.createAccount, exact: true }).click();
-  await expect(page.getByRole("button", { name: LABELS.signOut })).toBeVisible();
-
-  // The account opens on the prepared profile.
-  await page.goto("/#/");
+  // Opening the app is the sign-in. A browser cannot tell "no key" from
+  // "dismissed", so on a blank device it offers a new account in one press.
+  await page.goto("/");
+  await page.getByRole("button", { name: LABELS.newAccount }).click();
   for (const title of SEEDED_TOPICS) await expect(topicButton(page, title)).toBeVisible();
 
-  // Closing and reopening the app must not sign out or empty the list.
+  // Closing and reopening the app must not ask again or empty the list.
   await page.reload();
   for (const title of SEEDED_TOPICS) await expect(topicButton(page, title)).toBeVisible();
-  await openAccount(page);
-  await expect(page.getByRole("button", { name: LABELS.signOut })).toBeVisible();
 
-  // Delete one topic and push it to the account.
+  // Delete one topic and send it to the account without waiting for autosync.
   const doomed = SEEDED_TOPICS[5];
-  await page.goto("/#/");
   await topicButton(page, doomed).click();
   await page.getByRole("tab", { name: LABELS.aboutTab }).click();
   await page.getByRole("button", { name: LABELS.deleteTopic }).click();
   await expect(topicButton(page, doomed)).toHaveCount(0);
-  await openAccount(page);
+  await page.goto("/#/account");
   const synced = page.waitForResponse((r) => r.url().endsWith("/state") && r.request().method() === "PUT" && r.ok());
   await page.getByRole("button", { name: LABELS.sync }).click();
   await synced;
 
-  // A device that knows nothing but the key: the account's copy is the truth.
-  await page.evaluate(() => globalThis.localStorage.clear());
+  // A device that knows nothing but the key: opening the app signs straight in
+  // with it, and the account's copy is the truth.
+  await page.evaluate(() => {
+    globalThis.localStorage.clear();
+    globalThis.location.hash = "#/";
+  });
   await page.reload();
-  await openAccount(page);
-  await page.getByRole("button", { name: LABELS.continue }).click();
-  await expect(page.getByRole("button", { name: LABELS.signOut })).toBeVisible();
-  await page.goto("/#/");
   for (const title of SEEDED_TOPICS.slice(0, 5)) await expect(topicButton(page, title)).toBeVisible();
   await expect(topicButton(page, doomed)).toHaveCount(0);
 });

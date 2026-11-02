@@ -6,6 +6,8 @@ export const LABELS = {
   settings: "Настройки",
   accountAndSync: "Аккаунт и синхронизация",
   continue: "Продолжить",
+  signInWithKey: "Войти по ключу",
+  newAccount: "Новый аккаунт",
   createAccount: "Завести аккаунт",
   sync: "Синхронизировать",
   signOut: "Выйти",

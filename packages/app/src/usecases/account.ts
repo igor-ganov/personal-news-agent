@@ -4,6 +4,7 @@ import {
   claimState,
   clearedLocalState,
   emptyState,
+  isEmptyState,
   LOCAL_OWNER,
   mergeStates,
   ok,
@@ -66,6 +67,12 @@ export type EntryOutcome =
   | { readonly kind: "offer-create"; readonly email: string }
   /** The phone offered a key the server has never heard of. */
   | { readonly kind: "stale-key"; readonly email: string };
+
+/** What the prompt the app opens with can end in. */
+export type LaunchOutcome =
+  | { readonly kind: "signed-in"; readonly session: AuthSession }
+  /** The prompt was dismissed; the app offers to try again. */
+  | { readonly kind: "cancelled" };
 
 export type SyncOutcome =
   | { readonly kind: "synced"; readonly revision: number }
@@ -204,8 +211,54 @@ export const createAccountService = (deps: AccountDeps) => {
     return applied.ok ? ok({ kind: "signed-in", session: applied.value }) : applied;
   };
 
+  /**
+   * Signs in without stopping to ask about the device's data.
+   *
+   * The account is the source of truth: when it holds anything, the phone's
+   * leftovers are dropped instead of merged back as duplicates. Only an empty
+   * account — a fresh one — takes what the phone has.
+   */
+  const enterWith = async (
+    attempt: Promise<Result<AuthSession, AuthError>>,
+  ): Promise<Result<LaunchOutcome, AuthError>> => {
+    const started = await attempt;
+    if (!started.ok) return started;
+
+    const pending = await prepare(started.value);
+    if (!pending.ok) return pending;
+
+    const strategy: ClaimStrategy = isEmptyState(pending.value.account) ? "keep-local" : "keep-account";
+    const applied = await apply(pending.value, strategy);
+    return applied.ok ? ok({ kind: "signed-in", session: applied.value }) : applied;
+  };
+
+  /** Login failures that mean "this phone has no usable key yet". */
+  const NEEDS_ACCOUNT: ReadonlySet<AuthError["kind"]> = new Set(["no_credential", "unknown_credential"]);
+
   return {
     current: (): AuthSession | null => session,
+
+    /**
+     * The passkey prompt the app opens with.
+     *
+     * One press, one outcome: a known key signs in, a missing or orphaned key
+     * becomes a new account (an orphaned key belongs to an account that no
+     * longer exists, so there is nothing to sign in to), and a dismissal is
+     * reported so the screen can offer the prompt again.
+     */
+    async enter(): Promise<Result<LaunchOutcome, AuthError>> {
+      const signedIn = await enterWith(client.login({ immediate: true }));
+      if (signedIn.ok) return signedIn;
+      if (NEEDS_ACCOUNT.has(signedIn.error.kind)) return enterWith(client.register({}));
+      if (signedIn.error.kind === "cancelled") return ok({ kind: "cancelled" });
+      return signedIn;
+    },
+
+    /** The same entry, starting a new account outright — for a browser that cannot say "no key". */
+    enterAsNew: () => enterWith(client.register({})),
+
+    /** The same entry, with the system sheet that reaches a key on another phone. */
+    enterFromAnotherDevice: () => enterWith(client.login({ immediate: false })),
 
     /** False on a device with no authenticator: the screen then explains why. */
     isPasskeySupported: () => client.isPasskeySupported(),

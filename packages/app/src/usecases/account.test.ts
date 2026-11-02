@@ -567,3 +567,56 @@ describe("continueWith — одна дверь", () => {
     expect(titles(s.state())).toEqual(["местная", "серверная"]);
   });
 });
+
+describe("enter — the passkey prompt the app opens with", () => {
+  it("signs in with the key on the device and asks nothing, even when both sides hold data", async () => {
+    const auth = fakeAuthClient();
+    auth.setDocument(stateWith("t_remote"), 3);
+    const s = setup({ local: stateWith("t_local"), auth });
+    await s.repository.of(LOCAL_OWNER).save(stateWith("t_local"));
+
+    const outcome = await s.service.enter();
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    // The account is the source of truth: leftovers on the phone do not come back as duplicates.
+    expect(titles(s.state())).toEqual(["t_remote"]);
+  });
+
+  it("keeps what the phone has when the account starts empty", async () => {
+    const auth = fakeAuthClient();
+    const s = setup({ local: stateWith("t_local"), auth });
+    await s.repository.of(LOCAL_OWNER).save(stateWith("t_local"));
+
+    await s.service.enter();
+
+    expect(titles(s.state())).toEqual(["t_local"]);
+  });
+
+  it("creates the account when the phone has no key", async () => {
+    const auth = fakeAuthClient({ failures: { login: authError("no_credential", "no key") } });
+    const s = setup({ auth });
+
+    const outcome = await s.service.enter();
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    expect(auth.calls()).toContain("register");
+  });
+
+  it("creates the account when the phone offers a key the server no longer knows", async () => {
+    const auth = fakeAuthClient({ failures: { login: authError("unknown_credential", "stale") } });
+    const s = setup({ auth });
+
+    const outcome = await s.service.enter();
+
+    expect(outcome.ok && outcome.value.kind).toBe("signed-in");
+    expect(auth.calls()).toContain("register");
+  });
+
+  it("reports a dismissed prompt without creating anything", async () => {
+    const auth = fakeAuthClient({ failures: { login: authError("cancelled", "cancelled") } });
+    const s = setup({ auth });
+
+    expect(await s.service.enter()).toEqual({ ok: true, value: { kind: "cancelled" } });
+    expect(auth.calls()).not.toContain("register");
+  });
+});
