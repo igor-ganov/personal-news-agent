@@ -25,6 +25,8 @@ export interface RemoteJob {
   readonly meta: unknown;
   readonly result: unknown;
   readonly error: RemoteJobError | null;
+  /** What a running job is doing, as the server reported it; opaque here. */
+  readonly progress: unknown;
   /** When the server accepted the job; empty if it did not say. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -84,6 +86,7 @@ const parseJob = (raw: unknown): RemoteJob | null => {
     meta: job.meta ?? {},
     result: job.result ?? null,
     error: status ? asError(job.error) : unknownStatusError(job.status),
+    progress: job.progress ?? null,
     createdAt: typeof job.createdAt === "string" ? job.createdAt : "",
     updatedAt: typeof job.updatedAt === "string" ? job.updatedAt : "",
   };
@@ -110,6 +113,8 @@ export interface JobsClient {
     apiKey: string,
     model: string,
   ): Promise<Result<ProviderKeyStatus, AuthError>>;
+  /** Ideas for a card, answered in the request; the list is opaque here. */
+  suggest(token: string, request: unknown): Promise<Result<readonly unknown[], AuthError>>;
 }
 
 export const createJobsClient = (transport: Transport): JobsClient => ({
@@ -157,5 +162,18 @@ export const createJobsClient = (transport: Transport): JobsClient => ({
       body: { apiKey, model },
     });
     return response.ok ? ok(parseStatus(response.value)) : response;
+  },
+
+  async suggest(token, request) {
+    const response = await transport.request<{ suggestions?: unknown }>("/suggest", {
+      method: "POST",
+      token,
+      body: request,
+    });
+    if (!response.ok) return response;
+    const { suggestions } = response.value;
+    return Array.isArray(suggestions)
+      ? ok(suggestions)
+      : err(authError("server", "Сервер вернул непонятный ответ"));
   },
 });

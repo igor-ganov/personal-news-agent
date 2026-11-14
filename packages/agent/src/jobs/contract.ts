@@ -11,6 +11,7 @@ import type {
   ContentProvider,
   DiscoverSourcesInput,
   DraftProgramInput,
+  GenerationOptions,
   ProviderResult,
   WriteLessonInput,
 } from "../ports/content-provider.js";
@@ -53,16 +54,17 @@ type Runners = {
   [K in AgentJobKind]: (
     provider: ContentProvider,
     input: AgentJobInputs[K],
+    options: GenerationOptions,
   ) => Promise<ProviderResult<AgentJobResults[K]>>;
 };
 
 /** A table, not a switch: adding a kind is adding a row. */
 const RUNNERS: Runners = {
-  sources: (provider, input) => provider.discoverSources(input),
-  digest: (provider, input) => provider.buildDigest(input),
-  program: (provider, input) => provider.draftProgram(input),
-  lesson: (provider, input) => provider.writeLesson(input),
-  quiz: (provider, input) => provider.buildQuiz(input),
+  sources: (provider, input, options) => provider.discoverSources(input, options),
+  digest: (provider, input, options) => provider.buildDigest(input, options),
+  program: (provider, input, options) => provider.draftProgram(input, options),
+  lesson: (provider, input, options) => provider.writeLesson(input, options),
+  quiz: (provider, input, options) => provider.buildQuiz(input, options),
 };
 
 export const isAgentJobKind = (value: unknown): value is AgentJobKind =>
@@ -78,8 +80,14 @@ export const isAgentJobKind = (value: unknown): value is AgentJobKind =>
 export const runAgentJob = (
   provider: ContentProvider,
   request: AgentJobRequest,
+  options: GenerationOptions = {},
 ): Promise<ProviderResult<AgentJobResults[AgentJobKind]>> =>
-  (RUNNERS[request.kind] as (p: ContentProvider, i: unknown) => Promise<ProviderResult<never>>)(
+  (RUNNERS[request.kind] as (
+    p: ContentProvider,
+    i: unknown,
+    o: GenerationOptions,
+  ) => Promise<ProviderResult<never>>)(
     provider,
     request.input,
+    options,
   );

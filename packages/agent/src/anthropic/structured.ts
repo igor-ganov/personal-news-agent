@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { err, ok } from "@pna/core";
 import type { z } from "zod";
-import type { ProviderResult } from "../ports/content-provider.js";
+import type { ProgressListener, ProviderResult } from "../ports/content-provider.js";
+import { fixing, startWatch, watchEvent, type ItemReader, type ProgressWatch } from "../progress/watch.js";
 import { toolInputSchema } from "../schemas/json-schema.js";
 import { collectMessage } from "./accumulate.js";
 import { invalidOutput, refused, structuralErrorMapper, type ErrorMapper } from "./errors.js";
@@ -40,6 +41,8 @@ export interface StructuredCall<T> {
   readonly maxSearches: number;
   readonly blockedDomains: readonly string[];
   readonly effort: "low" | "medium" | "high" | "xhigh" | "max";
+  /** Finds the piece of the answer being written, for progress; none means no item is named. */
+  readonly readItem?: ItemReader;
 }
 
 export interface StructuredRunnerConfig {
@@ -79,9 +82,18 @@ export const runStructured = async <T>(
   client: MessagesClient,
   config: StructuredRunnerConfig,
   call: StructuredCall<T>,
+  onProgress: ProgressListener = () => undefined,
 ): Promise<ProviderResult<T>> => {
   const maxIterations = config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const mapError = config.mapError ?? structuralErrorMapper;
+
+  // One watch across every turn, so searches keep counting after a pause.
+  let watch = startWatch(call.toolName, call.readItem ?? (() => undefined));
+  const advance = (next: ProgressWatch): void => {
+    const changed = next.progress !== watch.progress;
+    watch = next;
+    if (changed) onProgress(next.progress);
+  };
 
   const tools = [
     ...(call.maxSearches > 0
@@ -111,7 +123,7 @@ export const runStructured = async <T>(
         messages,
         stream: true,
       });
-      message = await collectMessage(events);
+      message = await collectMessage(events, (event) => advance(watchEvent(watch, event)));
     } catch (error) {
       return err(mapError(error));
     }
@@ -126,6 +138,7 @@ export const runStructured = async <T>(
       if (parsed.success) return ok(parsed.data);
 
       // Hand the validation failure back so the model can fix its own output.
+      advance(fixing(watch));
       messages.push({ role: "assistant", content: message.content });
       messages.push({
         role: "user",

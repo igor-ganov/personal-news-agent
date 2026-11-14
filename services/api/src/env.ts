@@ -24,6 +24,10 @@ export interface Env {
   readonly PROVIDER_KEY_SECRET?: string;
   /** Model used when the account did not pin one. */
   readonly DEFAULT_MODEL?: string;
+  /** `mock` runs generation offline — the end-to-end run only, never a deployment. */
+  readonly GENERATOR?: string;
+  /** Jobs per cron tick; the end-to-end run raises it, a deployment leaves it unset. */
+  readonly JOBS_PER_TICK?: string;
 }
 
 export const allowedOrigins = (env: Env): string[] =>

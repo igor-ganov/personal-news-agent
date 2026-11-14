@@ -41,3 +41,24 @@ describe("pna-program-wizard prefill", () => {
     expect(intentField(element)?.value).toBe("своё");
   });
 });
+
+describe("pna-program-wizard ideas", () => {
+  it("a picked idea fills in what the program should achieve, and it stays editable", async () => {
+    const element = new PnaProgramWizard();
+    const idea = {
+      title: "Профилировать async",
+      summary: "",
+      brief: "Находить, где тормозит рантайм",
+      focus: [],
+    };
+    element.ideas = [idea];
+    await mount(element);
+
+    query<HTMLElement>(element, "pna-suggestions")?.dispatchEvent(
+      new CustomEvent("suggestion-pick", { detail: idea, bubbles: true, composed: true }),
+    );
+    await element.updateComplete;
+
+    expect(intentField(element)?.value).toBe("Профилировать async: Находить, где тормозит рантайм");
+  });
+});

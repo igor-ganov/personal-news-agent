@@ -122,7 +122,7 @@ describe("pna-digest-panel — история", () => {
     await element.updateComplete;
 
     const status = query<HTMLElement & { label: string; since: string }>(element, "ui-task-status");
-    expect(status?.label).toBe("Собираем дайджест");
+    expect(status?.label).toBe("Собираю дайджест");
     expect(status?.since).toBe("2026-08-22T10:00:00Z");
   });
 });

@@ -11,6 +11,8 @@
  * writing itself for the last two minutes, and how a failure raised while the
  * phone was closed reaches the screen that asked for it.
  */
+import { sameProgress, type GenerationProgress } from "@pna/core";
+
 export type TaskStatus = "idle" | "running" | "error" | "done";
 
 export interface TaskState {
@@ -30,9 +32,18 @@ export interface TaskState {
    * only while running; kept across re-adopts of the same running work.
    */
   readonly since: string | null;
+  /** What the running work is doing right now; null when nobody has said. */
+  readonly progress: GenerationProgress | null;
 }
 
-const IDLE: TaskState = { status: "idle", error: null, jobId: null, result: null, since: null };
+const IDLE: TaskState = {
+  status: "idle",
+  error: null,
+  jobId: null,
+  result: null,
+  since: null,
+  progress: null,
+};
 
 const stateOf = (over: Partial<TaskState>): TaskState => ({ ...IDLE, ...over });
 
@@ -59,7 +70,8 @@ const sameState = (a: TaskState, b: TaskState): boolean =>
   a.error === b.error &&
   a.jobId === b.jobId &&
   a.result === b.result &&
-  a.since === b.since;
+  a.since === b.since &&
+  sameProgress(a.progress, b.progress);
 
 const systemNow = (): string => new Date().toISOString();
 

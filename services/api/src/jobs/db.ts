@@ -24,6 +24,8 @@ export interface JobRow {
   started_at: string | null;
   finished_at: string | null;
   heartbeat_at?: string | null;
+  /** JSON `GenerationProgress` of the attempt in flight. */
+  progress?: string | null;
 }
 
 const nowIso = (): string => new Date().toISOString();
@@ -169,7 +171,7 @@ export const enqueueJob = async (env: JobStore, job: NewJob): Promise<JobRow> =>
 export const claimJob = async (env: JobStore, id: string): Promise<boolean> => {
   const now = nowIso();
   const result = await env.DB.prepare(
-    `UPDATE jobs SET status = 'running', attempts = attempts + 1,
+    `UPDATE jobs SET status = 'running', attempts = attempts + 1, progress = NULL,
        started_at = ?1, heartbeat_at = ?1, updated_at = ?1
      WHERE id = ?2 AND ${claimable("?3", "?4")}`,
   )
@@ -187,6 +189,18 @@ export const touchJob = async (env: JobStore, id: string): Promise<void> => {
     `UPDATE jobs SET heartbeat_at = ? WHERE id = ? AND status = 'running'`,
   )
     .bind(nowIso(), id)
+    .run();
+};
+
+/**
+ * Records what the running job is doing. It is also a sign of life, so it
+ * stamps the heartbeat; like the beat, it never touches a finished row.
+ */
+export const saveProgress = async (env: JobStore, id: string, progress: unknown): Promise<void> => {
+  await env.DB.prepare(
+    `UPDATE jobs SET progress = ?, heartbeat_at = ? WHERE id = ? AND status = 'running'`,
+  )
+    .bind(JSON.stringify(progress), nowIso(), id)
     .run();
 };
 

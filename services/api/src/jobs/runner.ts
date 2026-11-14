@@ -4,9 +4,12 @@ import {
   isRetryable,
   runAgentJob,
   type AgentJobRequest,
+  createMockProvider,
   type ContentProvider,
+  type ProgressListener,
   type ProviderError,
 } from "@pna/agent";
+import type { GenerationProgress } from "@pna/core";
 import type { Env } from "../env.js";
 import {
   claimJob,
@@ -15,6 +18,7 @@ import {
   HEARTBEAT_EVERY_MS,
   pendingJobs,
   providerCredentials,
+  saveProgress,
   touchJob,
   type JobRow,
   type JobStore,
@@ -82,6 +86,35 @@ const withHeartbeat = async <T>(store: JobStore, id: string, work: () => Promise
   }
 };
 
+/** How often the latest progress is written while the model streams. */
+export const PROGRESS_EVERY_MS = 2_000;
+
+/**
+ * Hands `work` a listener and writes the latest progress it heard every couple
+ * of seconds — never per stream event, which would be a write per token.
+ */
+const withProgress = async <T>(
+  store: JobStore,
+  id: string,
+  work: (report: ProgressListener) => Promise<T>,
+): Promise<T> => {
+  let latest: GenerationProgress | undefined;
+  let written: GenerationProgress | undefined;
+  const flush = (): void => {
+    if (!latest || latest === written) return;
+    written = latest;
+    void saveProgress(store, id, latest).catch(() => undefined);
+  };
+  const timer = setInterval(flush, PROGRESS_EVERY_MS);
+  try {
+    return await work((progress) => {
+      latest = progress;
+    });
+  } finally {
+    clearInterval(timer);
+  }
+};
+
 const generate = async (
   store: JobStore,
   row: JobRow,
@@ -89,7 +122,9 @@ const generate = async (
   provider: ContentProvider,
 ): Promise<void> => {
   try {
-    const result = await withHeartbeat(store, row.id, () => runAgentJob(provider, request));
+    const result = await withHeartbeat(store, row.id, () =>
+      withProgress(store, row.id, (onProgress) => runAgentJob(provider, request, { onProgress })),
+    );
     if (result.ok) await completeJob(store, row.id, result.value);
     else await failJob(store, row.id, result.error, isRetryable(result.error));
   } catch (error) {
@@ -139,10 +174,17 @@ const anthropicProvider = (credentials: ProviderCredentials): ContentProvider =>
     ...(credentials.model ? { model: credentials.model } : {}),
   });
 
-/** The production wiring: the account's stored key, the Anthropic provider. */
+/**
+ * The production wiring: the account's stored key, the Anthropic provider.
+ * `GENERATOR=mock` swaps in the offline provider — set only by the end-to-end
+ * run, which has no key and must not spend money.
+ */
 export const runnerDeps = (env: Env): RunnerDeps => ({
-  credentials: async (accountId) => (await providerCredentials(env, accountId)) ?? undefined,
-  provider: anthropicProvider,
+  credentials: async (accountId) =>
+    env.GENERATOR === "mock"
+      ? { apiKey: "", model: "" }
+      : ((await providerCredentials(env, accountId)) ?? undefined),
+  provider: env.GENERATOR === "mock" ? () => createMockProvider() : anthropicProvider,
 });
 
 /**
@@ -150,5 +192,15 @@ export const runnerDeps = (env: Env): RunnerDeps => ({
  * request that creates a job cannot run it, because `ctx.waitUntil` is cut off
  * thirty seconds after the response.
  */
-export const runPending = (env: Env, limit = JOBS_PER_TICK): Promise<void> =>
+export const runPending = (env: Env, limit = tickSize(env)): Promise<void> =>
   createRunner(env, runnerDeps(env)).runPending(limit);
+
+/**
+ * How many jobs a tick takes. `JOBS_PER_TICK` overrides it only where CPU is
+ * not metered — the end-to-end run, whose one triggered tick must drain the
+ * queue that parallel specs fill.
+ */
+const tickSize = (env: Env): number => {
+  const configured = Number(env.JOBS_PER_TICK);
+  return Number.isInteger(configured) && configured > 0 ? configured : JOBS_PER_TICK;
+};

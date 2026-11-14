@@ -7,6 +7,7 @@ import "../components/ui-button.js";
 import "../components/ui-chip.js";
 import "../components/ui-field.js";
 import "../components/ui-notice.js";
+import "../components/ui-task-status.js";
 
 const VERDICT_TONE = {
   correct: "ok",
@@ -34,6 +35,8 @@ export class PnaQuizView extends LitElement {
     quiz: { type: Object },
     result: { type: Object },
     busy: { type: Boolean },
+    since: { type: String },
+    steps: { type: Array },
     error: { type: String },
     _answers: { state: true },
   };
@@ -41,6 +44,9 @@ export class PnaQuizView extends LitElement {
   declare quiz: Quiz | null;
   declare result: QuizResult | null;
   declare busy: boolean;
+  /** When the test being built was asked for, and what the building is at. */
+  declare since: string;
+  declare steps: readonly string[];
   declare error: string;
   private declare _answers: Answers;
 
@@ -49,6 +55,8 @@ export class PnaQuizView extends LitElement {
     this.quiz = null;
     this.result = null;
     this.busy = false;
+    this.since = "";
+    this.steps = [];
     this.error = "";
     this._answers = emptyAnswers();
   }
@@ -188,7 +196,10 @@ export class PnaQuizView extends LitElement {
 
   override render() {
     if (!this.quiz) {
-      return html`
+      return html`<div>
+        ${this.busy
+          ? html`<ui-task-status label="Составляю тест" .since=${this.since} .steps=${this.steps}></ui-task-status>`
+          : null}
         <ui-notice tone="empty" message="Теста для этого занятия пока нет.">
           <ui-button
             slot="actions"
@@ -199,7 +210,7 @@ export class PnaQuizView extends LitElement {
           >
         </ui-notice>
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}
-      `;
+      </div>`;
     }
 
     return html`

@@ -8,6 +8,7 @@ import "../components/ui-chip.js";
 import "../components/ui-diagram.js";
 import "../components/ui-markdown.js";
 import "../components/ui-notice.js";
+import "../components/ui-task-status.js";
 
 /**
  * One lecture: key points, the body, diagrams, links, and the two kinds of
@@ -21,6 +22,8 @@ export class PnaLessonView extends LitElement {
     busy: { type: Boolean },
     error: { type: String },
     hasQuiz: { type: Boolean },
+    since: { type: String },
+    steps: { type: Array },
   };
 
   declare lesson: LessonPlan;
@@ -28,6 +31,9 @@ export class PnaLessonView extends LitElement {
   declare busy: boolean;
   declare error: string;
   declare hasQuiz: boolean;
+  /** When the lecture being written was asked for, and what the writing is at. */
+  declare since: string;
+  declare steps: readonly string[];
 
   constructor() {
     super();
@@ -35,6 +41,8 @@ export class PnaLessonView extends LitElement {
     this.busy = false;
     this.error = "";
     this.hasQuiz = false;
+    this.since = "";
+    this.steps = [];
   }
 
   static override styles = [
@@ -118,6 +126,14 @@ export class PnaLessonView extends LitElement {
     return html`
       <div class="lesson">
         <p class="objective">${lesson.objective}</p>
+        ${this.busy
+          ? html`<ui-task-status
+              label="Пишу лекцию"
+              .since=${this.since}
+              .steps=${this.steps}
+              hint="Можно закрыть приложение — лекция придёт сама"
+            ></ui-task-status>`
+          : null}
 
         ${!content
           ? html`<div class="pending">

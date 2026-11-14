@@ -24,11 +24,25 @@ const wrangler = (args, options) =>
 const migrated = wrangler(["d1", "migrations", "apply", "pna", "--local", "--persist-to", state], { wait: true });
 if (migrated.status !== 0) process.exit(migrated.status ?? 1);
 
+// The fresh start hands its prepared profile to the first account only. Specs
+// run side by side, so every spec that signs in gets a copy of its own.
+const SPECS_THAT_SIGN_IN = 2;
+const copies = Array.from(
+  { length: SPECS_THAT_SIGN_IN - 1 },
+  (_, n) => `INSERT INTO account_seeds (id, body, created_at) SELECT id || '-copy-${n}', body, created_at FROM account_seeds WHERE id NOT LIKE '%-copy-%';`,
+).join(" ");
+const seeded = wrangler(["d1", "execute", "pna", "--local", "--persist-to", state, "--command", JSON.stringify(copies)], { wait: true });
+if (seeded.status !== 0) process.exit(seeded.status ?? 1);
+
 const server = wrangler([
   "dev", "--local", "--port", port, "--persist-to", state,
   "--var", "RP_ID:localhost",
   "--var", `ALLOWED_ORIGINS:${appOrigin}`,
   "--var", "PROVIDER_KEY_SECRET:e2e-secret",
+  // Generation runs offline, and the cron that runs it fires when a spec asks.
+  "--var", "GENERATOR:mock",
+  "--var", "JOBS_PER_TICK:100",
+  "--test-scheduled",
 ]);
 const stop = () => server.kill();
 process.on("SIGINT", stop);

@@ -16,3 +16,4 @@ export * from "./usecases/digests.js";
 export * from "./usecases/skills.js";
 export * from "./usecases/settings.js";
 export * from "./usecases/account.js";
+export * from "./usecases/suggestions.js";

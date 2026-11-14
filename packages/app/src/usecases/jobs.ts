@@ -11,6 +11,9 @@ import {
   err,
   findProgramOfLesson,
   instantOf,
+  QUEUED_PROGRESS,
+  readProgress,
+  STARTED_PROGRESS,
   lessonId as toLessonId,
   mergeDiscoveredSources,
   ok,
@@ -385,16 +388,24 @@ export const runGeneration = async <K extends AgentJobKind>(
       return submitted;
     }
 
-    tasks.adopt(request.key, { status: "running", jobId: submitted.value.id, result });
+    tasks.adopt(request.key, {
+      status: "running",
+      jobId: submitted.value.id,
+      result,
+      progress: QUEUED_PROGRESS,
+    });
     return ok({ kind: "queued", jobId: submitted.value.id });
   }
 
-  tasks.adopt(request.key, { status: "running", result: asked(request.meta) });
+  const meta = asked(request.meta);
+  tasks.adopt(request.key, { status: "running", result: meta, progress: STARTED_PROGRESS });
 
   // `kind` and `input` are correlated by construction; indexing the union here
   // is what loses that for the compiler, so the pairing is restated once.
   const call = { kind: request.kind, input: request.input } as AgentJobRequest;
-  const produced = await runAgentJob(ctx.deps.provider, call);
+  const produced = await runAgentJob(ctx.deps.provider, call, {
+    onProgress: (progress) => tasks.adopt(request.key, { status: "running", result: meta, progress }),
+  });
   if (!produced.ok) {
     tasks.adopt(request.key, {
       status: "error",
@@ -444,6 +455,10 @@ const askedOf = (ctx: AppContext, job: JobView): unknown => {
   return known.jobId === job.id && known.result !== null ? known.result : asked(job.meta);
 };
 
+/** What a job in flight is doing: its own report, else what its status implies. */
+const progressOf = (job: JobView) =>
+  readProgress(job.progress) ?? (job.status === "queued" ? QUEUED_PROGRESS : STARTED_PROGRESS);
+
 const foldRunning = (ctx: AppContext, job: JobView): void => {
   const since = startOf(ctx, job);
   const result = askedOf(ctx, job);
@@ -451,7 +466,7 @@ const foldRunning = (ctx: AppContext, job: JobView): void => {
     job.key,
     overdue(since, ctx.deps.clock.now())
       ? { status: "error", error: OVERDUE_JOB_MESSAGE, jobId: job.id, result }
-      : { status: "running", jobId: job.id, since, result },
+      : { status: "running", jobId: job.id, since, result, progress: progressOf(job) },
   );
 };
 
@@ -599,21 +614,38 @@ export const startJobPolling = (ctx: AppContext, options: JobPollingOptions = {}
   const activeMs = options.activeMs ?? 5_000;
   const idleMs = options.idleMs ?? 45_000;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the pending look is the long idle one, which new work must cut short. */
+  let idling = false;
   let stopped = false;
+
+  const schedule = (): void => {
+    idling = !hasRunningTasks(ctx);
+    timer = setTimeout(() => void tick(), idling ? idleMs : activeMs);
+  };
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
+    timer = null;
     const result = await syncJobs(ctx);
     if (result.ok) options.onSuccess?.();
     else options.onError?.(result.error);
     if (stopped) return;
-    timer = setTimeout(() => void tick(), hasRunningTasks(ctx) ? activeMs : idleMs);
+    schedule();
   };
+
+  // Work handed over while the poller idles would otherwise wait out the idle
+  // gap — up to a minute of no progress and no result on screen.
+  const unsubscribe = ctx.deps.tasks.subscribe(() => {
+    if (stopped || timer === null || !idling || !hasRunningTasks(ctx)) return;
+    clearTimeout(timer);
+    schedule();
+  });
 
   void tick();
 
   return () => {
     stopped = true;
+    unsubscribe();
     if (timer !== null) clearTimeout(timer);
   };
 };

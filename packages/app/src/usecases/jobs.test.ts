@@ -5,10 +5,12 @@ import {
   ok,
   programLessons,
   quizOfLesson,
+  STARTED_PROGRESS,
   type ProgramDraft,
   type Result,
 } from "@pna/core";
-import { describe, expect, it } from "vitest";
+import { createMockProvider, type SuggestInput } from "@pna/agent";
+import { describe, expect, it, vi } from "vitest";
 import { harness, T0 } from "../testing/harness.js";
 import { appError, type AppError } from "../errors.js";
 import type { JobSubmission, JobView, JobsGateway } from "../ports/jobs.js";
@@ -44,6 +46,7 @@ const plan: ProgramDraft = {
 const fakeJobs = (initial: JobView[] = []) => {
   const submitted: JobSubmission[] = [];
   const dismissed: string[] = [];
+  const asked: SuggestInput[] = [];
   let jobs = [...initial];
   let counter = 0;
 
@@ -77,12 +80,17 @@ const fakeJobs = (initial: JobView[] = []) => {
     async setCredentials(_apiKey, model) {
       return ok({ configured: true, ownKey: true, model });
     },
+    async suggest(request) {
+      asked.push(request);
+      return ok([{ title: "С сервера", summary: "", brief: "", focus: [] }]);
+    },
   };
 
   return {
     gateway,
     submitted,
     dismissed,
+    asked,
     set(next: JobView[]) {
       jobs = next;
     },
@@ -310,6 +318,34 @@ describe("startJobPolling", () => {
     expect(errors).toEqual(["Сессия истекла — войдите снова"]);
     expect(recovered).toBe(1);
   });
+
+  it("looks again soon once work is handed over, not after the idle wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const server = fakeJobs();
+      let looks = 0;
+      const gateway: JobsGateway = { ...server.gateway, list: async () => ((looks += 1), server.gateway.list()) };
+      const { ctx, topicId } = withTopic(gateway);
+      const stop = startJobPolling(ctx, { activeMs: 5_000, idleMs: 45_000 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(looks).toBe(1);
+
+      // Nothing was running at the first look, so the next one was set for the idle wait.
+      await draftProgram(ctx, {
+        topicId,
+        intent: "разобраться",
+        schedule: { startDay: calendarDay(T0), intensity: { weeks: 1, sessionsPerWeek: 1, minutesPerSession: 45 } },
+        basedOn: [],
+        continuation: "fresh",
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      stop();
+
+      expect(looks).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("syncJobs applying results", () => {
@@ -421,5 +457,84 @@ describe("syncJobs applying results", () => {
     expect(Object.keys(state().quizzes)).toHaveLength(0);
     expect(ctx.deps.tasks.get("quiz:ghost").status).toBe("error");
     expect(quizOfLesson(state(), "ghost" as never)).toBeUndefined();
+  });
+});
+
+describe("progress of a generation", () => {
+  const request = (topicId: Parameters<typeof draftProgram>[1]["topicId"]) => ({
+    topicId,
+    intent: "разобраться",
+    schedule: { startDay: calendarDay(T0), intensity: { weeks: 1, sessionsPerWeek: 1, minutesPerSession: 45 } },
+    basedOn: [],
+    continuation: "fresh" as const,
+  });
+
+  it("work handed to the server reads as waiting in its queue", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+
+    await draftProgram(ctx, request(topicId));
+
+    expect(ctx.deps.tasks.get(programTaskKey(topicId)).progress?.stage).toBe("queued");
+  });
+
+  it("a running job carries what the server says it is doing", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+    const progress = { stage: "searching", query: "vLLM", found: ["vllm.ai"], item: "", searches: 2, items: 0 };
+
+    server.set([{ id: "job_9", key, kind: "program", status: "running", meta: {}, result: null, error: null, progress }]);
+    await syncJobs(ctx);
+
+    expect(ctx.deps.tasks.get(key).progress).toEqual(progress);
+  });
+
+  it("a running job that has not reported yet reads as started, not as garbage", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+
+    server.set([{ id: "job_9", key, kind: "program", status: "running", meta: {}, result: null, error: null, progress: "?" }]);
+    await syncJobs(ctx);
+
+    expect(ctx.deps.tasks.get(key).progress?.stage).toBe("thinking");
+  });
+
+  it("the same progress polled twice does not wake the screens", async () => {
+    const server = fakeJobs();
+    const { ctx, topicId } = withTopic(server.gateway);
+    const key = programTaskKey(topicId);
+    const progress = { stage: "writing", query: "", found: [], item: "Модуль 1", searches: 0, items: 1 };
+    server.set([{ id: "job_9", key, kind: "program", status: "running", meta: {}, result: null, error: null, progress }]);
+    await syncJobs(ctx);
+
+    let wakes = 0;
+    ctx.deps.tasks.subscribe(() => (wakes += 1));
+    server.set([{ id: "job_9", key, kind: "program", status: "running", meta: {}, result: null, error: null, progress: { ...progress } }]);
+    await syncJobs(ctx);
+
+    expect(wakes).toBe(0);
+  });
+
+  it("work run on this device reports progress as it goes", async () => {
+    const seen: (string | undefined)[] = [];
+    const h = harness({
+      provider: {
+        ...createMockProvider(),
+        draftProgram: async (input, options) => {
+          options?.onProgress?.({ ...STARTED_PROGRESS, stage: "writing", item: "Модуль 1", items: 1 });
+          seen.push(h.ctx.deps.tasks.get(key).progress?.item);
+          return createMockProvider().draftProgram(input);
+        },
+      },
+    });
+    const created = addTopic(h.ctx, { parentId: null, title: "Инференс" });
+    if (!created.ok) throw new Error("expected ok");
+    const key = programTaskKey(created.value.id);
+
+    await draftProgram(h.ctx, request(created.value.id));
+
+    expect(seen).toEqual(["Модуль 1"]);
   });
 });

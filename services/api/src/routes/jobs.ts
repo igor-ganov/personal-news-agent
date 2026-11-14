@@ -3,13 +3,8 @@ import { Hono } from "hono";
 import { hitRateLimit } from "../db.js";
 import type { Env } from "../env.js";
 import { badRequest, fail, readJson, tooManyRequests, unauthorized } from "../http.js";
-import {
-  deleteJob,
-  enqueueJob,
-  findJob,
-  listJobs,
-  type JobRow,
-} from "../jobs/db.js";
+import { deleteJob, enqueueJob, findJob, listJobs } from "../jobs/db.js";
+import { toPayload } from "../jobs/payload.js";
 import { requestAccount } from "../session.js";
 
 /** Enough headroom for a person on several devices, low enough to blunt a script. */
@@ -17,38 +12,6 @@ const SUBMIT_LIMIT = 60;
 const SUBMIT_WINDOW_MS = 3_600_000;
 
 const MAX_INPUT_BYTES = 512 * 1024;
-
-const parse = (value: string | null): unknown => {
-  if (value === null) return null;
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-};
-
-/**
- * The wire shape of a job.
- *
- * `meta` is whatever the app needs to make sense of the answer when it comes
- * back — which lesson the lecture belongs to, which topic the digest was for.
- * The server stores it and hands it back untouched.
- */
-const toPayload = (row: JobRow) => ({
-  id: row.id,
-  key: row.task_key,
-  kind: row.kind,
-  status: row.status,
-  meta: parse(row.meta) ?? {},
-  result: row.status === "done" ? parse(row.result) : null,
-  error:
-    row.status === "failed"
-      ? { kind: row.error_kind ?? "unknown", message: row.error_message ?? "Не получилось" }
-      : null,
-  attempts: row.attempts,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
 
 export const jobRoutes = new Hono<{ Bindings: Env }>();
 

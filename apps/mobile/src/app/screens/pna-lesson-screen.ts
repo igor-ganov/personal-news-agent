@@ -111,6 +111,8 @@ export class PnaLessonScreen extends ConnectedElement {
               .quiz=${quiz}
               .result=${this._result?.ok ? this._result.value.result : null}
               ?busy=${this.isBusy(quizTaskKey(this.lessonId))}
+              .since=${this.taskSince(quizTaskKey(this.lessonId))}
+              .steps=${this.taskSteps(quizTaskKey(this.lessonId), "quiz")}
               .error=${this.taskError(quizTaskKey(this.lessonId))}
               @quiz-generate=${() => {
                 this._result = null;
@@ -127,6 +129,8 @@ export class PnaLessonScreen extends ConnectedElement {
               .lesson=${lesson}
               .content=${content}
               ?busy=${this.isBusy(lessonTaskKey(this.lessonId))}
+              .since=${this.taskSince(lessonTaskKey(this.lessonId))}
+              .steps=${this.taskSteps(lessonTaskKey(this.lessonId), "lesson")}
               .error=${this.taskError(lessonTaskKey(this.lessonId))}
               ?hasQuiz=${quiz !== null || lastAttempt !== null}
               @lesson-generate=${() => void generateLesson(this.ctx, this.lessonId)}

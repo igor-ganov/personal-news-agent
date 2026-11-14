@@ -5,8 +5,13 @@ import type {
   ContentProvider,
   DiscoverSourcesInput,
   DraftProgramInput,
+  GenerationOptions,
+  SuggestInput,
   WriteLessonInput,
 } from "../ports/content-provider.js";
+import { lastHeading, lastString } from "../progress/watch.js";
+import { suggestPrompt, suggestSystem, SUGGEST_TOOL } from "../prompts/suggest.js";
+import { suggestSchema, toSuggestions } from "../schemas/suggest.js";
 import { digestPrompt, digestSystem, DIGEST_TOOL } from "../prompts/digest.js";
 import { lessonPrompt, lessonSystem, LESSON_TOOL } from "../prompts/lesson.js";
 import { programPrompt, programSystem, PROGRAM_TOOL } from "../prompts/program.js";
@@ -81,9 +86,10 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
   return {
     id: "anthropic",
 
-    async discoverSources(input: DiscoverSourcesInput) {
+    async discoverSources(input: DiscoverSourcesInput, options?: GenerationOptions) {
       const { client, config } = await runner();
       const result = await runStructured(client, config, {
+        readItem: lastString("title"),
         system: discoverSourcesSystem(),
         prompt: discoverSourcesPrompt(input),
         toolName: DISCOVER_SOURCES_TOOL,
@@ -93,13 +99,14 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
         maxSearches: 8,
         blockedDomains: input.blockedHosts,
         effort: "medium",
-      });
+      }, options?.onProgress);
       return mapResult(result, toSourceCandidates);
     },
 
-    async buildDigest(input: BuildDigestInput) {
+    async buildDigest(input: BuildDigestInput, options?: GenerationOptions) {
       const { client, config } = await runner();
       const result = await runStructured(client, config, {
+        readItem: lastString("title"),
         system: digestSystem(input.period),
         prompt: digestPrompt(input),
         toolName: DIGEST_TOOL,
@@ -109,13 +116,14 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
         maxSearches: DIGEST_SEARCHES[input.period] ?? 8,
         blockedDomains: input.blockedHosts,
         effort: "high",
-      });
+      }, options?.onProgress);
       return mapResult(result, toDigestDraft);
     },
 
-    async draftProgram(input: DraftProgramInput) {
+    async draftProgram(input: DraftProgramInput, options?: GenerationOptions) {
       const { client, config } = await runner();
       const result = await runStructured(client, config, {
+        readItem: lastString("title"),
         system: programSystem(input.continuation),
         prompt: programPrompt(input),
         toolName: PROGRAM_TOOL,
@@ -125,15 +133,16 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
         maxSearches: 5,
         blockedDomains: [],
         effort: "high",
-      });
+      }, options?.onProgress);
       return mapResult(result, (payload: ProgramPayload) =>
         toProgramDraft(payload, input.minutesPerSession),
       );
     },
 
-    async writeLesson(input: WriteLessonInput) {
+    async writeLesson(input: WriteLessonInput, options?: GenerationOptions) {
       const { client, config } = await runner();
       const result = await runStructured(client, config, {
+        readItem: lastHeading,
         system: lessonSystem(),
         prompt: lessonPrompt(input),
         toolName: LESSON_TOOL,
@@ -143,15 +152,16 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
         maxSearches: 10,
         blockedDomains: input.blockedHosts,
         effort: "xhigh",
-      });
+      }, options?.onProgress);
       return mapResult(result, (payload: LessonContentPayload) =>
         toLessonContentDraft(payload, input.priorMaterial),
       );
     },
 
-    async buildQuiz(input: BuildQuizInput) {
+    async buildQuiz(input: BuildQuizInput, options?: GenerationOptions) {
       const { client, config } = await runner();
       const result = await runStructured(client, config, {
+        readItem: lastString("prompt"),
         system: quizSystem(),
         prompt: quizPrompt(input),
         toolName: QUIZ_TOOL,
@@ -162,8 +172,25 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
         maxSearches: 0,
         blockedDomains: [],
         effort: "medium",
-      });
+      }, options?.onProgress);
       return mapResult(result, toQuizDraft);
+    },
+
+    async suggest(input: SuggestInput) {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
+        system: suggestSystem(),
+        prompt: suggestPrompt(input),
+        toolName: SUGGEST_TOOL,
+        toolDescription: "Report the ideas.",
+        schema: suggestSchema,
+        maxTokens: 6000,
+        // Answered while the user waits: knowledge, not research.
+        maxSearches: 0,
+        blockedDomains: [],
+        effort: "low",
+      });
+      return mapResult(result, toSuggestions);
     },
   };
 };

@@ -46,3 +46,5 @@ export * from "./settings/pna-settings-view.js";
 
 export * from "./account/pna-account-view.js";
 export * from "./account/pna-claim-choice.js";
+export * from "./suggestions/pna-suggestions.js";
+export * from "./format/progress.js";

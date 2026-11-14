@@ -5,6 +5,7 @@ import {
   type ProgramId,
   type Schedule,
   type SkillProgram,
+  type Suggestion,
 } from "@pna/core";
 import { css, html, LitElement, type PropertyValues } from "lit";
 import { emit } from "../events.js";
@@ -18,6 +19,7 @@ import "../components/ui-button.js";
 import "../components/ui-chip.js";
 import "../components/ui-field.js";
 import "../components/ui-notice.js";
+import "../suggestions/pna-suggestions.js";
 
 export interface ProgramRequest {
   readonly intent: string;
@@ -37,6 +39,10 @@ export class PnaProgramWizard extends LitElement {
     busy: { type: Boolean },
     error: { type: String },
     initial: { type: Object },
+    ideas: { type: Array },
+    ideasBusy: { type: Boolean },
+    ideasError: { type: String },
+    _picked: { state: true },
     _intent: { state: true },
     _weeks: { state: true },
     _sessions: { state: true },
@@ -54,6 +60,11 @@ export class PnaProgramWizard extends LitElement {
    * with, so asking again does not mean typing it all again.
    */
   declare initial: ProgramRequest | undefined;
+  /** Skills to start from; the screen fetches them on `suggestions-more`. */
+  declare ideas: readonly Suggestion[];
+  declare ideasBusy: boolean;
+  declare ideasError: string;
+  private declare _picked: string;
   private declare _intent: string;
   private declare _weeks: number;
   private declare _sessions: number;
@@ -68,6 +79,10 @@ export class PnaProgramWizard extends LitElement {
     this.busy = false;
     this.error = "";
     this.initial = undefined;
+    this.ideas = [];
+    this.ideasBusy = false;
+    this.ideasError = "";
+    this._picked = "";
     this._intent = "";
     this._weeks = 4;
     this._sessions = 3;
@@ -200,6 +215,12 @@ export class PnaProgramWizard extends LitElement {
     this._basedOn = request.basedOn;
   }
 
+  /** A picked skill becomes the goal, written out in full and left to edit. */
+  private pick(idea: Suggestion): void {
+    this._picked = idea.title;
+    this._intent = idea.brief ? `${idea.title}: ${idea.brief}` : idea.title;
+  }
+
   private submit(): void {
     emit<ProgramRequest>(this, "program-request", {
       intent: this._intent,
@@ -222,6 +243,18 @@ export class PnaProgramWizard extends LitElement {
 
     return html`
       <div class="wizard">
+        <section>
+          <h3>Идеи навыков</h3>
+          <pna-suggestions
+            label="Идеи навыков"
+            .ideas=${this.ideas}
+            ?busy=${this.ideasBusy}
+            .error=${this.ideasError}
+            .picked=${this._picked}
+            @suggestion-pick=${(e: CustomEvent<Suggestion>) => this.pick(e.detail)}
+          ></pna-suggestions>
+        </section>
+
         <section>
           <h3>Чего хотите добиться</h3>
           <ui-field

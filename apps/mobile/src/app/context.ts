@@ -1,4 +1,5 @@
 import type { AppContext } from "@pna/app";
+import { progressSteps, type ProgressSubject } from "@pna/ui";
 import { LitElement } from "lit";
 
 let current: AppContext | null = null;
@@ -51,5 +52,11 @@ export class ConnectedElement extends LitElement {
   protected taskSince(key: string): string {
     const state = this.ctx.deps.tasks.get(key);
     return state.status === "running" ? (state.since ?? "") : "";
+  }
+
+  /** What a running task is doing, as lines to show; empty when it is not running. */
+  protected taskSteps(key: string, subject: ProgressSubject): readonly string[] {
+    const state = this.ctx.deps.tasks.get(key);
+    return state.status === "running" ? progressSteps(subject, state.progress) : [];
   }
 }

@@ -1,4 +1,4 @@
-import { TOPIC_LEVELS, type Topic, type TopicLevel } from "@pna/core";
+import { TOPIC_LEVELS, type Suggestion, type Topic, type TopicLevel } from "@pna/core";
 import { css, html, LitElement, type PropertyValues } from "lit";
 import { emit } from "../events.js";
 import { LEVEL_LABEL } from "../format/labels.js";
@@ -8,6 +8,7 @@ import "../components/ui-button.js";
 import "../components/ui-chip.js";
 import "../components/ui-field.js";
 import "./pna-focus-editor.js";
+import "../suggestions/pna-suggestions.js";
 
 export interface TopicFormValue {
   readonly title: string;
@@ -23,12 +24,23 @@ export class PnaTopicForm extends LitElement {
     topic: { type: Object },
     parentTitle: { type: String },
     error: { type: String },
+    suggestible: { type: Boolean },
+    ideas: { type: Array },
+    ideasBusy: { type: Boolean },
+    ideasError: { type: String },
+    _picked: { state: true },
     _value: { state: true },
   };
 
   declare topic: Topic | null;
   declare parentTitle: string;
   declare error: string;
+  /** Offers subtopic ideas above the card; the screen fetches them on `suggestions-more`. */
+  declare suggestible: boolean;
+  declare ideas: readonly Suggestion[];
+  declare ideasBusy: boolean;
+  declare ideasError: string;
+  private declare _picked: string;
   private declare _value: TopicFormValue;
 
   constructor() {
@@ -36,6 +48,11 @@ export class PnaTopicForm extends LitElement {
     this.topic = null;
     this.parentTitle = "";
     this.error = "";
+    this.suggestible = false;
+    this.ideas = [];
+    this.ideasBusy = false;
+    this.ideasError = "";
+    this._picked = "";
     this._value = { title: "", brief: "", level: "intermediate", excludes: [], focusAreas: [] };
   }
 
@@ -112,6 +129,33 @@ export class PnaTopicForm extends LitElement {
     this._value = { ...this._value, ...patch };
   }
 
+  /** A picked idea fills the card; the level and exclusions stay the user's. */
+  private pick(idea: Suggestion): void {
+    this._picked = idea.title;
+    this.patch({
+      title: idea.title,
+      brief: idea.brief,
+      focusAreas:
+        idea.focus.length > 0
+          ? idea.focus.map((title) => ({ title, detail: "", weight: 3 }))
+          : [emptyFocusRow()],
+    });
+  }
+
+  private renderIdeas() {
+    return html`<fieldset>
+      <legend>Идеи подтем — выберите, чтобы заполнить карточку</legend>
+      <pna-suggestions
+        label="Идеи подтем"
+        .ideas=${this.ideas}
+        ?busy=${this.ideasBusy}
+        .error=${this.ideasError}
+        .picked=${this._picked}
+        @suggestion-pick=${(e: CustomEvent<Suggestion>) => this.pick(e.detail)}
+      ></pna-suggestions>
+    </fieldset>`;
+  }
+
   override render() {
     return html`
       <form
@@ -123,6 +167,7 @@ export class PnaTopicForm extends LitElement {
         ${this.parentTitle
           ? html`<p class="parent">Подтема темы «${this.parentTitle}»</p>`
           : null}
+        ${this.suggestible ? this.renderIdeas() : null}
 
         <ui-field
           label="Название"

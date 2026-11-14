@@ -13,11 +13,12 @@ export const createDelegatingProvider = (
   id = "delegating",
 ): ContentProvider => ({
   id,
-  discoverSources: async (input) => (await resolve()).discoverSources(input),
-  buildDigest: async (input) => (await resolve()).buildDigest(input),
-  draftProgram: async (input) => (await resolve()).draftProgram(input),
-  writeLesson: async (input) => (await resolve()).writeLesson(input),
-  buildQuiz: async (input) => (await resolve()).buildQuiz(input),
+  discoverSources: async (input, options) => (await resolve()).discoverSources(input, options),
+  buildDigest: async (input, options) => (await resolve()).buildDigest(input, options),
+  draftProgram: async (input, options) => (await resolve()).draftProgram(input, options),
+  writeLesson: async (input, options) => (await resolve()).writeLesson(input, options),
+  buildQuiz: async (input, options) => (await resolve()).buildQuiz(input, options),
+  suggest: async (input) => (await resolve()).suggest(input),
 });
 
 /**

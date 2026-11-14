@@ -1,5 +1,5 @@
 import type { AuthError, JobsClient, RemoteJob } from "@pna/auth";
-import { err, ok, type Result } from "@pna/core";
+import { err, ok, readSuggestions, type Result } from "@pna/core";
 import { appError, type AppError } from "../errors.js";
 import type { JobView, JobsGateway } from "../ports/jobs.js";
 
@@ -14,6 +14,7 @@ const toView = (job: RemoteJob): JobView => ({
   meta: job.meta,
   result: job.result,
   error: job.error,
+  progress: job.progress,
   ...(job.createdAt ? { createdAt: job.createdAt } : {}),
 });
 
@@ -58,5 +59,10 @@ export const createRemoteJobs = (client: JobsClient, sessions: TokenSource): Job
 
     setCredentials: (apiKey, model) =>
       withToken((token) => client.setProviderKey(token, apiKey, model)),
+
+    async suggest(request) {
+      const answered = await withToken((token) => client.suggest(token, request));
+      return answered.ok ? ok(readSuggestions(answered.value)) : answered;
+    },
   };
 };

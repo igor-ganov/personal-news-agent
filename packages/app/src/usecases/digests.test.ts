@@ -41,6 +41,7 @@ const digesting = (): ContentProvider & { calls: any[] } => {
     draftProgram: async () => ({ ok: false, error: { kind: "unknown", message: "" } }),
     writeLesson: async () => ({ ok: false, error: { kind: "unknown", message: "" } }),
     buildQuiz: async () => ({ ok: false, error: { kind: "unknown", message: "" } }),
+    suggest: async () => ({ ok: false, error: { kind: "unknown", message: "" } }),
   } as ContentProvider & { calls: any[] };
 };
 

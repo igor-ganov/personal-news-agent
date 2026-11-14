@@ -17,6 +17,7 @@ const serverWith = (initial: GeneratorCredentials) => {
       credentials = { configured: true, ownKey: true, model };
       return ok(credentials);
     },
+    suggest: async () => ok([]),
   };
   return { gateway, uploads: () => uploads };
 };

@@ -1,5 +1,6 @@
 import type { AgentJobKind } from "@pna/agent/jobs";
-import type { Result } from "@pna/core";
+import type { SuggestInput } from "@pna/agent";
+import type { Result, Suggestion } from "@pna/core";
 import type { AppError } from "../errors.js";
 
 /**
@@ -25,6 +26,8 @@ export interface JobView {
   readonly meta: unknown;
   readonly result: unknown;
   readonly error: JobFailure | null;
+  /** What the server says a running job is doing, unchecked. */
+  readonly progress?: unknown;
   /** When the server accepted the work (ISO instant), if it said. */
   readonly createdAt?: string;
 }
@@ -56,4 +59,6 @@ export interface JobsGateway {
    * can sign in and sync but has nothing to run a job with.
    */
   setCredentials(apiKey: string, model: string): Promise<Result<GeneratorCredentials, AppError>>;
+  /** Ideas for a card, answered while the user waits rather than queued. */
+  suggest(request: SuggestInput): Promise<Result<readonly Suggestion[], AppError>>;
 }

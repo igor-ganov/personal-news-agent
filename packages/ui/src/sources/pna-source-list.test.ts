@@ -107,7 +107,7 @@ describe("pna-source-list", () => {
     await mount(element);
 
     const status = query<HTMLElement & { label: string; since: string }>(element, "ui-task-status");
-    expect(status?.label).toBe("Ищем источники");
+    expect(status?.label).toBe("Ищу источники");
     expect(status?.since).toBe("2026-08-22T10:00:00Z");
   });
 

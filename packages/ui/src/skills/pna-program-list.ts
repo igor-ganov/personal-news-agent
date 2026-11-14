@@ -15,7 +15,13 @@ import "../components/ui-task-status.js";
  */
 export type ProgramTaskView =
   | { readonly kind: "idle" }
-  | { readonly kind: "running"; readonly since: string }
+  | {
+      readonly kind: "running";
+      readonly since: string;
+      /** What is being drafted — the goal, or the programs being built on. */
+      readonly label?: string;
+      readonly steps?: readonly string[];
+    }
   | { readonly kind: "error"; readonly message: string };
 
 const IDLE: ProgramTaskView = { kind: "idle" };
@@ -102,8 +108,9 @@ export class PnaProgramList extends LitElement {
     const task = this.task;
     if (task.kind === "running")
       return html`<ui-task-status
-        label="Составляем программу"
+        label=${task.label ?? "Составляю программу"}
         .since=${task.since}
+        .steps=${task.steps ?? []}
         hint=${PROGRAM_RUNNING_HINT}
       ></ui-task-status>`;
 

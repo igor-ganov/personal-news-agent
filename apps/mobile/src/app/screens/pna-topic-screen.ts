@@ -17,8 +17,8 @@ import {
   programTaskKey,
   refreshTopicSources,
   sourceTaskKey,
+  suggestIdeas,
   type TaskState,
-  type TaskStatus,
 } from "@pna/app";
 import {
   ancestorsOf,
@@ -33,7 +33,10 @@ import {
   type ProgramDraft,
   type ProgramId,
   type Schedule,
+  type ContinuationMode,
   type SourceId,
+  type Suggestion,
+  type SuggestionKind,
   type TopicId,
   type UserSourceDraft,
 } from "@pna/core";
@@ -61,15 +64,26 @@ type SkillsMode = "list" | "wizard";
 
 const PERIODS: readonly DigestPeriod[] = ["day", "week", "month", "year"];
 
-/** How each tracker status reads on the skills tab; a held plan is the editor's, not this. */
-const PROGRAM_TASK: Readonly<Record<TaskStatus, (state: TaskState) => ProgramTaskView>> = {
-  idle: () => ({ kind: "idle" }),
-  done: () => ({ kind: "idle" }),
-  running: (state) => ({ kind: "running", since: state.since ?? "" }),
-  error: (state) => ({ kind: "error", message: state.error ?? "Не получилось" }),
-};
+/** Ideas offered for one kind of card, as the screen holds them between taps. */
+interface IdeasState {
+  readonly ideas: readonly Suggestion[];
+  readonly busy: boolean;
+  readonly error: string;
+}
 
-const programTaskView = (state: TaskState): ProgramTaskView => PROGRAM_TASK[state.status](state);
+const NO_IDEAS: IdeasState = { ideas: [], busy: false, error: "" };
+
+const MAX_GOAL = 80;
+
+const quoted = (titles: readonly string[]): string => titles.map((title) => `«${title}»`).join(", ");
+
+/** What a plan being drafted is about: the programs it builds on, else its goal. */
+const PLAN_LABEL: Readonly<Record<ContinuationMode, (bases: readonly string[], goal: string) => string>> = {
+  fresh: (_bases, goal) => (goal ? `Составляю программу: «${goal}»` : "Составляю программу"),
+  deepen: (bases) => `Углубляю ${quoted(bases)}`,
+  extend: (bases) => `Продолжаю ${quoted(bases)}`,
+  apply: (bases) => `Практика по ${quoted(bases)}`,
+};
 
 /**
  * A topic: its digests, its programs, its sources and its own settings.
@@ -83,6 +97,8 @@ export class PnaTopicScreen extends ConnectedElement {
   static override properties = {
     topicId: { type: String },
     tab: { type: String },
+    _ideas: { state: true },
+    _addingSubtopic: { state: true },
     _mode: { state: true },
     _edited: { state: true },
     _planError: { state: true },
@@ -98,6 +114,8 @@ export class PnaTopicScreen extends ConnectedElement {
   private declare _planError: string;
   private declare _editing: boolean;
   private declare _formError: string;
+  private declare _ideas: Readonly<Record<SuggestionKind, IdeasState>>;
+  private declare _addingSubtopic: boolean;
   private refreshed = new Set<string>();
 
   constructor() {
@@ -108,6 +126,8 @@ export class PnaTopicScreen extends ConnectedElement {
     this._planError = "";
     this._editing = false;
     this._formError = "";
+    this._ideas = { subtopic: NO_IDEAS, skill: NO_IDEAS };
+    this._addingSubtopic = false;
   }
 
   static override styles = css`
@@ -170,6 +190,25 @@ export class PnaTopicScreen extends ConnectedElement {
     void ensureSourcesFresh(this.ctx, this.topicId);
   }
 
+  /* -------------------------------------------------------------- ideas -- */
+
+  private setIdeas(kind: SuggestionKind, next: IdeasState): void {
+    this._ideas = { ...this._ideas, [kind]: next };
+  }
+
+  /** Asks for the next ten ideas of a kind and appends them to the list. */
+  private async moreIdeas(kind: SuggestionKind): Promise<void> {
+    const shown = this._ideas[kind].ideas;
+    this.setIdeas(kind, { ideas: shown, busy: true, error: "" });
+    const result = await suggestIdeas(this.ctx, { kind, topicId: this.topicId, shown });
+    this.setIdeas(
+      kind,
+      result.ok
+        ? { ideas: result.value, busy: false, error: "" }
+        : { ideas: shown, busy: false, error: result.error.message },
+    );
+  }
+
   private goTab(tab: string): void {
     navigate(routeHref({ name: "topic", topicId: this.topicId, tab: tab as TopicTab }));
   }
@@ -216,6 +255,25 @@ export class PnaTopicScreen extends ConnectedElement {
     }
     const startDay = calendarDay(this.ctx.deps.clock.now().slice(0, 10));
     this.requestPlan({ ...request, schedule: { ...request.schedule, startDay } });
+  }
+
+  /** The status card of the plan being drafted, named after what it is about. */
+  private programTask(key: string): ProgramTaskView {
+    const state: TaskState = this.ctx.deps.tasks.get(key);
+    if (state.status === "error") return { kind: "error", message: state.error ?? "Не получилось" };
+    if (state.status !== "running") return { kind: "idle" };
+
+    const meta = pendingRequest("program", state);
+    const programs = this.ctx.store.getState().programs;
+    const bases = (meta?.basedOn ?? []).flatMap((id) => programs[id]?.title ?? []);
+    const goal = (meta?.intent ?? "").trim().slice(0, MAX_GOAL);
+    const mode = bases.length > 0 ? (meta?.continuation ?? "fresh") : "fresh";
+    return {
+      kind: "running",
+      since: state.since ?? "",
+      label: PLAN_LABEL[mode](bases, goal),
+      steps: this.taskSteps(key, "program"),
+    };
   }
 
   /** The plan waiting for this topic, if one has finished generating. */
@@ -293,7 +351,7 @@ export class PnaTopicScreen extends ConnectedElement {
       ></pna-plan-editor>`;
     }
 
-    const task = programTaskView(this.ctx.deps.tasks.get(key));
+    const task = this.programTask(key);
 
     // A plan being drafted is never hidden behind the wizard: one request at a
     // time, and its status card is the only place it shows.
@@ -303,6 +361,10 @@ export class PnaTopicScreen extends ConnectedElement {
         .startDay=${this.ctx.deps.clock.now().slice(0, 10)}
         .initial=${this.lastRequest()}
         .error=${this.taskError(key)}
+        .ideas=${this._ideas.skill.ideas}
+        ?ideasBusy=${this._ideas.skill.busy}
+        .ideasError=${this._ideas.skill.error}
+        @suggestions-more=${() => void this.moreIdeas("skill")}
         @program-request=${(e: CustomEvent<ProgramRequest>) => this.requestPlan(e.detail)}
       ></pna-program-wizard>`;
     }
@@ -376,15 +438,16 @@ export class PnaTopicScreen extends ConnectedElement {
             </button>
           `,
         )}
-        <ui-button
-          size="sm"
-          @click=${() => {
-            const result = addTopic(this.ctx, { parentId: this.topicId, title: "Новая подтема" });
-            if (result.ok)
-              navigate(routeHref({ name: "topic", topicId: result.value.id, tab: "about" }));
-          }}
-          >Добавить подтему</ui-button
-        >
+        ${this._addingSubtopic
+          ? this.renderSubtopicForm(topic.title)
+          : html`<ui-button
+              size="sm"
+              @click=${() => {
+                this._formError = "";
+                this._addingSubtopic = true;
+              }}
+              >Добавить подтему</ui-button
+            >`}
       </div>
 
       <div class="danger">
@@ -398,6 +461,42 @@ export class PnaTopicScreen extends ConnectedElement {
         >
       </div>
     </div>`;
+  }
+
+  /** A new subtopic: a card to fill by hand or from an idea, created only on save. */
+  private renderSubtopicForm(parentTitle: string): TemplateResult {
+    return html`<pna-topic-form
+      .parentTitle=${parentTitle}
+      .error=${this._formError}
+      suggestible
+      .ideas=${this._ideas.subtopic.ideas}
+      ?ideasBusy=${this._ideas.subtopic.busy}
+      .ideasError=${this._ideas.subtopic.error}
+      @suggestions-more=${() => void this.moreIdeas("subtopic")}
+      @topic-save=${(e: CustomEvent<TopicFormValue>) => this.createSubtopic(e.detail)}
+      @topic-cancel=${() => {
+        this._addingSubtopic = false;
+      }}
+    ></pna-topic-form>`;
+  }
+
+  private createSubtopic(value: TopicFormValue): void {
+    const result = addTopic(this.ctx, {
+      parentId: this.topicId,
+      title: value.title,
+      brief: value.brief,
+      level: value.level,
+      excludes: value.excludes,
+      focusAreas: value.focusAreas,
+    });
+    if (!result.ok) {
+      this._formError = result.error.message;
+      return;
+    }
+    this._formError = "";
+    this._addingSubtopic = false;
+    this.setIdeas("subtopic", NO_IDEAS);
+    navigate(routeHref({ name: "topic", topicId: result.value.id, tab: "news" }));
   }
 
   /* -------------------------------------------------------------- render -- */
@@ -421,6 +520,9 @@ export class PnaTopicScreen extends ConnectedElement {
           .digests=${overview.digests}
           .busyPeriods=${busy}
           .busySince=${busySince}
+          .busySteps=${Object.fromEntries(
+            busy.map((period) => [period, this.taskSteps(digestTaskKey(this.topicId, period), "digest")]),
+          )}
           .error=${errors[0] ?? ""}
           @digest-request=${(e: CustomEvent<DigestPeriod>) =>
             void generateDigest(this.ctx, { topicId: this.topicId, period: e.detail })}
@@ -433,6 +535,7 @@ export class PnaTopicScreen extends ConnectedElement {
           .sources=${overview.sources}
           ?busy=${this.isBusy(key)}
           .since=${this.taskSince(key)}
+          .steps=${this.taskSteps(key, "sources")}
           .error=${this.taskError(key)}
           @source-refresh=${() =>
             void refreshTopicSources(this.ctx, this.topicId, { force: true })}

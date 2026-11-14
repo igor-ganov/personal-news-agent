@@ -18,6 +18,7 @@ export class UiTaskStatus extends LitElement {
     label: { type: String },
     since: { type: String },
     hint: { type: String, reflect: true },
+    steps: { type: Array },
     _elapsed: { state: true },
   };
 
@@ -25,6 +26,8 @@ export class UiTaskStatus extends LitElement {
   /** When the task started (ISO instant); empty hides the timer. */
   declare since: string;
   declare hint: string;
+  /** What the work is doing right now, current step first; empty shows none. */
+  declare steps: readonly string[];
   /** The clock, replaceable so a test can freeze it. */
   now: () => number = () => Date.now();
   private declare _elapsed: number;
@@ -35,6 +38,7 @@ export class UiTaskStatus extends LitElement {
     this.label = "";
     this.since = "";
     this.hint = "";
+    this.steps = [];
     this._elapsed = 0;
   }
 
@@ -70,6 +74,33 @@ export class UiTaskStatus extends LitElement {
 
       [hidden] {
         display: none;
+      }
+
+      .steps {
+        flex-basis: 100%;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: 0.9rem;
+      }
+
+      .steps li + li {
+        color: var(--pna-text-dim);
+        font-size: 0.85rem;
+      }
+
+      .steps li {
+        overflow-wrap: anywhere;
+      }
+
+      /* Read out with the label; on screen the list below shows it. */
+      .sr-step {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
       }
 
       .hint {
@@ -115,13 +146,22 @@ export class UiTaskStatus extends LitElement {
     this._elapsed = Number.isNaN(start) ? 0 : this.now() - start;
   }
 
+  /** The current step, read out with the label but shown only in the list. */
+  private announced(step: string | undefined) {
+    return step ? html`<span class="sr-step">. ${step}</span>` : null;
+  }
+
   override render() {
+    // Every step is on screen in the list, hidden from assistive tech, which
+    // hears the current one with the label instead.
+    const [current] = this.steps;
     return html`
       <span class="spinner" aria-hidden="true"></span>
-      <span role="status">${this.label}…</span>
-      <time ?hidden=${this.since.length === 0} datetime=${isoDuration(this._elapsed)}
-        >${formatElapsed(this._elapsed)}</time
-      >
+      <span role="status">${this.label}…${this.announced(current)}</span>
+      <time ?hidden=${this.since.length === 0} datetime=${isoDuration(this._elapsed)}>${formatElapsed(this._elapsed)}</time>
+      <ul class="steps" aria-hidden="true" ?hidden=${!current}>
+        ${this.steps.map((step) => html`<li>${step}</li>`)}
+      </ul>
       <p class="hint" ?hidden=${this.hint.length === 0}>${this.hint}</p>
     `;
   }

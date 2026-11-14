@@ -64,4 +64,5 @@ export const failingProvider = (
   draftProgram: async () => ({ ok: false, error }),
   writeLesson: async () => ({ ok: false, error }),
   buildQuiz: async () => ({ ok: false, error }),
+  suggest: async () => ({ ok: false, error }),
 });

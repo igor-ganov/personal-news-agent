@@ -1,6 +1,7 @@
 import type {
   DigestDraft,
   DigestPeriod,
+  GenerationProgress,
   Instant,
   LessonContentDraft,
   LessonPlan,
@@ -10,6 +11,8 @@ import type {
   Result,
   Source,
   SourceCandidate,
+  Suggestion,
+  SuggestionKind,
   TopicContext,
   Window,
 } from "@pna/core";
@@ -92,7 +95,23 @@ export interface BuildQuizInput {
   readonly now: Instant;
 }
 
+export interface SuggestInput {
+  readonly context: TopicContext;
+  /** What is being suggested: subtopics of the topic, or skills to learn in it. */
+  readonly kind: SuggestionKind;
+  /** Titles that exist or were already offered — each batch must be new. */
+  readonly exclude: readonly string[];
+  readonly count: number;
+}
+
 /* --------------------------------------------------------------- the port -- */
+
+export type ProgressListener = (progress: GenerationProgress) => void;
+
+/** How a caller follows a generation while it runs. Never part of the request. */
+export interface GenerationOptions {
+  readonly onProgress?: ProgressListener;
+}
 
 /**
  * Everything the app needs from a content backend. Implementations are swappable:
@@ -101,9 +120,17 @@ export interface BuildQuizInput {
  */
 export interface ContentProvider {
   readonly id: string;
-  discoverSources(input: DiscoverSourcesInput): Promise<ProviderResult<SourceCandidate[]>>;
-  buildDigest(input: BuildDigestInput): Promise<ProviderResult<DigestDraft>>;
-  draftProgram(input: DraftProgramInput): Promise<ProviderResult<ProgramDraft>>;
-  writeLesson(input: WriteLessonInput): Promise<ProviderResult<LessonContentDraft>>;
-  buildQuiz(input: BuildQuizInput): Promise<ProviderResult<QuizDraft>>;
+  discoverSources(
+    input: DiscoverSourcesInput,
+    options?: GenerationOptions,
+  ): Promise<ProviderResult<SourceCandidate[]>>;
+  buildDigest(input: BuildDigestInput, options?: GenerationOptions): Promise<ProviderResult<DigestDraft>>;
+  draftProgram(input: DraftProgramInput, options?: GenerationOptions): Promise<ProviderResult<ProgramDraft>>;
+  writeLesson(
+    input: WriteLessonInput,
+    options?: GenerationOptions,
+  ): Promise<ProviderResult<LessonContentDraft>>;
+  buildQuiz(input: BuildQuizInput, options?: GenerationOptions): Promise<ProviderResult<QuizDraft>>;
+  /** Ideas to start a card from — quick, no web search, answered while the user waits. */
+  suggest(input: SuggestInput): Promise<ProviderResult<Suggestion[]>>;
 }

@@ -200,3 +200,47 @@ describe("runStructured", () => {
     expect(create.mock.calls[0]![0].stream).toBe(true);
   });
 });
+
+describe("runStructured — progress", () => {
+  const searchThenAnswer = message({
+    stop_reason: "tool_use",
+    content: [
+      { type: "server_tool_use", id: "s1", name: "web_search", input: { query: "tokio" } },
+      {
+        type: "web_search_tool_result",
+        tool_use_id: "s1",
+        content: [{ type: "web_search_result", url: "https://tokio.rs/a", title: "t", encrypted_content: "", page_age: null }],
+      },
+      { type: "tool_use", id: "tu_1", name: "emit_answer", input: { answer: "42" } },
+    ] as Anthropic.ContentBlock[],
+  });
+
+  it("reports the search, what it found and the answer being written", async () => {
+    const { client } = clientOf([searchThenAnswer]);
+    const seen: string[] = [];
+    await runStructured(client, { model: "claude-opus-5" }, { ...call, readItem: () => undefined }, (p) =>
+      seen.push(`${p.stage}:${p.query}:${p.found.join(",")}`),
+    );
+    expect(seen).toContain("searching:tokio:");
+    expect(seen).toContain("searching:tokio:tokio.rs");
+    expect(seen.at(-1)).toBe("writing:tokio:tokio.rs");
+  });
+
+  it("says it is fixing the answer when the model got the format wrong", async () => {
+    const { client } = clientOf([toolUse({ wrong: 1 }), toolUse({ answer: "ok" }, "tu_2")]);
+    const stages: string[] = [];
+    await runStructured(client, { model: "claude-opus-5" }, call, (p) => stages.push(p.stage));
+    expect(stages).toContain("fixing");
+  });
+
+  it("keeps counting searches across turns", async () => {
+    const paused = message({
+      stop_reason: "pause_turn",
+      content: [{ type: "server_tool_use", id: "s1", name: "web_search", input: { query: "one" } }] as Anthropic.ContentBlock[],
+    });
+    const { client } = clientOf([paused, searchThenAnswer]);
+    let last = 0;
+    await runStructured(client, { model: "claude-opus-5" }, call, (p) => (last = p.searches));
+    expect(last).toBe(2);
+  });
+});

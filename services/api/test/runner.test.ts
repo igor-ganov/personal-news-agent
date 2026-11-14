@@ -1,8 +1,8 @@
 import { createMockProvider, type ContentProvider } from "@pna/agent";
-import { ok } from "@pna/core";
+import { ok, STARTED_PROGRESS } from "@pna/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findJobById, HEARTBEAT_EVERY_MS } from "../src/jobs/db.js";
-import { createRunner, JOBS_PER_TICK, type RunnerDeps } from "../src/jobs/runner.js";
+import { claimJob, findJobById, HEARTBEAT_EVERY_MS } from "../src/jobs/db.js";
+import { createRunner, JOBS_PER_TICK, PROGRESS_EVERY_MS, type RunnerDeps } from "../src/jobs/runner.js";
 import { createTestDatabase, type TestDatabase } from "./support/d1.js";
 
 const NOW = Date.parse("2026-11-01T12:00:00.000Z");
@@ -86,5 +86,42 @@ describe("job runner", () => {
     expect(claimedAt).toBe(new Date(NOW).toISOString());
     expect(beat).toBe(new Date(NOW + HEARTBEAT_EVERY_MS).toISOString());
     expect((await findJobById(db, "slow"))?.status).toBe("done");
+  });
+
+  it("saves what the model is doing while it runs", async () => {
+    queue(db, ["live"]);
+    let release = (): void => undefined;
+    let start = (): void => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const started = new Promise<void>((resolve) => (start = resolve));
+    const provider: ContentProvider = {
+      ...createMockProvider(),
+      discoverSources: async (_input, options) => {
+        options?.onProgress?.({ ...STARTED_PROGRESS, stage: "searching", query: "tokio", searches: 1 });
+        start();
+        await gate;
+        return ok([]);
+      },
+    };
+    const running = createRunner(db, depsWith(provider)).runPending();
+
+    await started;
+    await vi.advanceTimersByTimeAsync(PROGRESS_EVERY_MS);
+    const saved = (await findJobById(db, "live"))?.progress;
+
+    release();
+    await running;
+
+    expect(JSON.parse(saved ?? "null")).toMatchObject({ stage: "searching", query: "tokio", searches: 1 });
+  });
+
+  it("a new attempt starts without the progress of the one that died", async () => {
+    queue(db, ["retry"]);
+    db.sqlite
+      .prepare("UPDATE jobs SET progress = ?, status = 'running', attempts = 1, started_at = ? WHERE id = 'retry'")
+      .run(JSON.stringify({ ...STARTED_PROGRESS, stage: "writing" }), new Date(NOW - 10 * 60_000).toISOString());
+
+    expect(await claimJob(db, "retry")).toBe(true);
+    expect((await findJobById(db, "retry"))?.progress ?? null).toBeNull();
   });
 });

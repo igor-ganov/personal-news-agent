@@ -8,6 +8,7 @@ export * from "./prompts/digest.js";
 export * from "./prompts/program.js";
 export * from "./prompts/lesson.js";
 export * from "./prompts/quiz.js";
+export * from "./prompts/suggest.js";
 
 export * from "./schemas/json-schema.js";
 export * from "./schemas/instant.js";
@@ -16,6 +17,7 @@ export * from "./schemas/digest.js";
 export * from "./schemas/program.js";
 export * from "./schemas/lesson.js";
 export * from "./schemas/quiz.js";
+export * from "./schemas/suggest.js";
 
 export * from "./anthropic/errors.js";
 export * from "./anthropic/sdk.js";
@@ -26,3 +28,4 @@ export * from "./anthropic/provider.js";
 export * from "./mock/provider.js";
 export * from "./jobs/contract.js";
 export * from "./delegating.js";
+export * from "./progress/watch.js";

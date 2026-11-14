@@ -20,6 +20,7 @@ export class PnaSourceList extends LitElement {
     sources: { type: Array },
     busy: { type: Boolean },
     since: { type: String },
+    steps: { type: Array },
     error: { type: String },
     _showBlacklist: { state: true },
     _adding: { state: true },
@@ -31,6 +32,8 @@ export class PnaSourceList extends LitElement {
   declare busy: boolean;
   /** When the running refresh started (ISO instant), for the timer. */
   declare since: string;
+  /** What the running search is doing, current step first. */
+  declare steps: readonly string[];
   declare error: string;
   private declare _showBlacklist: boolean;
   private declare _adding: boolean;
@@ -42,6 +45,7 @@ export class PnaSourceList extends LitElement {
     this.sources = [];
     this.busy = false;
     this.since = "";
+    this.steps = [];
     this.error = "";
     this._showBlacklist = false;
     this._adding = false;
@@ -116,7 +120,11 @@ export class PnaSourceList extends LitElement {
         </header>
 
         ${this.busy
-          ? html`<ui-task-status label="Ищем источники" .since=${this.since}></ui-task-status>`
+          ? html`<ui-task-status
+              label="Ищу источники"
+              .since=${this.since}
+              .steps=${this.steps}
+            ></ui-task-status>`
           : null}
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}
 

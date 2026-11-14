@@ -26,6 +26,7 @@ export class PnaDigestPanel extends LitElement {
     digests: { type: Object },
     busyPeriods: { type: Array },
     busySince: { type: Object },
+    busySteps: { type: Object },
     error: { type: String },
     period: { type: String },
     _selected: { state: true },
@@ -35,6 +36,8 @@ export class PnaDigestPanel extends LitElement {
   declare busyPeriods: readonly DigestPeriod[];
   /** When each running digest started (ISO instant), for the timer. */
   declare busySince: Readonly<Partial<Record<DigestPeriod, string>>>;
+  /** What each running digest is doing, current step first. */
+  declare busySteps: Readonly<Partial<Record<DigestPeriod, readonly string[]>>>;
   declare error: string;
   declare period: DigestPeriod;
   /** Which digest is open, per period. */
@@ -46,6 +49,7 @@ export class PnaDigestPanel extends LitElement {
     this.digests = {};
     this.busyPeriods = [];
     this.busySince = {};
+    this.busySteps = {};
     this.error = "";
     this.period = "day";
     this._selected = {};
@@ -182,8 +186,9 @@ export class PnaDigestPanel extends LitElement {
 
         ${busy
           ? html`<ui-task-status
-              label="Собираем дайджест"
+              label="Собираю дайджест"
               .since=${this.busySince[this.period] ?? ""}
+              .steps=${this.busySteps[this.period] ?? []}
             ></ui-task-status>`
           : null}
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}

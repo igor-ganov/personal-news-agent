@@ -107,6 +107,7 @@ export class UiField extends LitElement {
   override render() {
     const control = this.multiline
       ? html`<textarea
+          id="control"
           rows=${this.rows}
           .value=${this.value}
           placeholder=${this.placeholder}
@@ -114,6 +115,7 @@ export class UiField extends LitElement {
           @input=${(e: Event) => this.emit(e)}
         ></textarea>`
       : html`<input
+          id="control"
           type=${this.inputType}
           .value=${this.value}
           placeholder=${this.placeholder}
@@ -123,7 +125,7 @@ export class UiField extends LitElement {
 
     return html`
       <div class="field">
-        ${this.label ? html`<label>${this.label}</label>` : null} ${control}
+        ${this.label ? html`<label for="control">${this.label}</label>` : null} ${control}
         ${this.error
           ? html`<p class="error">${this.error}</p>`
           : this.hint

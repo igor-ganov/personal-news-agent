@@ -50,3 +50,16 @@ describe("ui-task-status", () => {
     expect(query<HTMLElement>(element, "time")?.hidden).toBe(true);
   });
 });
+
+describe("ui-task-status steps", () => {
+  it("shows what the work is doing right now, the current step in the live region", async () => {
+    const element = new UiTaskStatus();
+    element.label = "Ищу источники";
+    element.steps = ["Поиск 2: «tokio»", "Смотрю: tokio.rs"];
+    await mount(element);
+
+    expect(text(element)).toContain("Поиск 2: «tokio»");
+    expect(text(element)).toContain("Смотрю: tokio.rs");
+    expect(query(element, "[role=status]")?.textContent).toContain("Поиск 2: «tokio»");
+  });
+});

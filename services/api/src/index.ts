@@ -10,6 +10,7 @@ import { enrollRoutes } from "./routes/enroll.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { providerRoutes } from "./routes/provider.js";
 import { stateRoutes } from "./routes/state.js";
+import { suggestRoutes } from "./routes/suggest.js";
 
 /** The daily housekeeping schedule, as written in wrangler.toml. */
 const DAILY_SWEEP = "0 3 * * *";
@@ -57,6 +58,16 @@ app.use("/provider-key/*", (c, next) =>
   })(c, next),
 );
 
+app.use("/suggest/*", (c, next) =>
+  cors({
+    origin: allowedOrigins(c.env),
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["POST", "OPTIONS"],
+    credentials: false,
+    maxAge: 600,
+  })(c, next),
+);
+
 app.get("/health", (c) => c.json({ ok: true, rpId: c.env.RP_ID }));
 
 /**
@@ -91,6 +102,7 @@ app.route("/enroll", enrollRoutes);
 app.route("/state", stateRoutes);
 app.route("/jobs", jobRoutes);
 app.route("/provider-key", providerRoutes);
+app.route("/suggest", suggestRoutes);
 
 app.notFound((c) => c.json({ code: "not_found", message: "Нет такого маршрута" }, 404));
 

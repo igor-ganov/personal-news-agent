@@ -1,12 +1,35 @@
-import { ok, type DigestDraft, type ProgramDraft, type QuizDraft, type SourceCandidate } from "@pna/core";
+import {
+  ok,
+  STARTED_PROGRESS,
+  type DigestDraft,
+  type ProgramDraft,
+  type QuizDraft,
+  type SourceCandidate,
+  type Suggestion,
+  type SuggestionKind,
+} from "@pna/core";
 import type {
   BuildDigestInput,
   BuildQuizInput,
   ContentProvider,
   DiscoverSourcesInput,
   DraftProgramInput,
+  GenerationOptions,
+  SuggestInput,
   WriteLessonInput,
 } from "../ports/content-provider.js";
+
+/** The mock's ideas are numbered, so «ещё» visibly brings new ones. */
+const IDEA_POOL = 60;
+
+const IDEA_NOUN: Readonly<Record<SuggestionKind, string>> = { subtopic: "Подтема", skill: "Навык" };
+
+const ideaOf = (kind: SuggestionKind, topic: string, n: number): Suggestion => ({
+  title: `${IDEA_NOUN[kind]} ${n}: ${topic}`,
+  summary: `Заглушка идеи ${n} для темы «${topic}»`,
+  brief: kind === "skill" ? `Научиться применять идею ${n} на практике` : `Следить за направлением ${n} внутри темы «${topic}»`,
+  focus: kind === "skill" ? [] : [`Фокус ${n}.1`, `Фокус ${n}.2`],
+});
 
 const hash = (value: string): string => {
   let h = 0;
@@ -34,7 +57,7 @@ const slug = (value: string): string => {
 export const createMockProvider = (): ContentProvider => ({
   id: "mock",
 
-  async discoverSources(input: DiscoverSourcesInput) {
+  async discoverSources(input: DiscoverSourcesInput, options?: GenerationOptions) {
     const base = slug(input.context.topic.title);
     const known = new Set(input.known.map((s) => s.key));
     const blocked = new Set(input.blockedHosts);
@@ -54,6 +77,11 @@ export const createMockProvider = (): ContentProvider => ({
       kind: "newsletter",
       rationale: "Обзорная рассылка по теме",
     };
+
+    // Played back as a real run reports it, so the app's progress path runs offline too.
+    candidates.forEach((candidate, i) =>
+      options?.onProgress?.({ ...STARTED_PROGRESS, stage: "writing", item: candidate.title, items: i + 1 }),
+    );
 
     return ok(
       [...candidates, fallback]
@@ -156,5 +184,15 @@ export const createMockProvider = (): ContentProvider => ({
       })),
     };
     return ok(draft);
+  },
+
+  async suggest(input: SuggestInput) {
+    const excluded = new Set(input.exclude);
+    const topic = input.context.topic.title;
+    return ok(
+      Array.from({ length: IDEA_POOL }, (_, i) => ideaOf(input.kind, topic, i + 1))
+        .filter((idea) => !excluded.has(idea.title))
+        .slice(0, input.count),
+    );
   },
 });

@@ -134,8 +134,12 @@ export const finalMessage = (state: Accumulation): Anthropic.Message => {
 /** Drains a raw event stream into the message it describes. */
 export const collectMessage = async (
   events: AsyncIterable<StreamEvent>,
+  observe: (event: StreamEvent) => void = () => undefined,
 ): Promise<Anthropic.Message> => {
   let state = emptyAccumulation;
-  for await (const event of events) state = accumulate(state, event);
+  for await (const event of events) {
+    state = accumulate(state, event);
+    observe(event);
+  }
   return finalMessage(state);
 };
