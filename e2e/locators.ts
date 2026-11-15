@@ -27,6 +27,8 @@ export const LABELS = {
   focusField: "Что именно интересно",
   advancedLevel: "продвинутый",
   newTopic: "Новая",
+  periodDay: "День",
+  digestDay: "Что нового за день",
   goalField: "Чего хотите добиться",
   weeksSlider: "Длительность",
   sessionsSlider: "Занятий в неделю",

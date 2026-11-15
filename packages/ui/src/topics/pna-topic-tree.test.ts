@@ -44,7 +44,7 @@ describe("pna-topic-tree", () => {
   it("emits topic-create from the empty state", async () => {
     const element = await render([]);
     const events = capture<TopicId | null>(element, "topic-create");
-    await click(element, query(element, "ui-button"));
+    await click(element, query(element, "ui-pencil-button"));
     expect(events).toHaveLength(1);
   });
 

@@ -1,4 +1,5 @@
 import { css, html, LitElement } from "lit";
+import { drawnCss, drawnFrame, nextSeed } from "../sketch/drawn.js";
 import { baseCss } from "../styles/tokens.js";
 
 /** A surface with a title row and a body. The whole content area is one slot. */
@@ -13,6 +14,8 @@ export class UiCard extends LitElement {
   declare subtitle: string;
   declare flat: boolean;
 
+  private readonly seed = nextSeed();
+
   constructor() {
     super();
     this.heading = "";
@@ -22,21 +25,22 @@ export class UiCard extends LitElement {
 
   static override styles = [
     baseCss,
+    drawnCss,
     css`
       :host {
         display: block;
       }
 
       .card {
-        background: var(--pna-surface);
-        border: 1px solid var(--pna-border);
-        border-radius: var(--pna-radius);
-        padding: var(--pna-gap);
+        position: relative;
+        padding: 14px 16px;
+      }
+
+      .card > .frame {
+        color: var(--pna-text-dim);
       }
 
       .card.flat {
-        background: transparent;
-        border-color: transparent;
         padding: 0;
       }
 
@@ -78,6 +82,7 @@ export class UiCard extends LitElement {
             `
           : null}
         <slot></slot>
+        ${this.flat ? null : drawnFrame(this.seed)}
       </section>
     `;
   }

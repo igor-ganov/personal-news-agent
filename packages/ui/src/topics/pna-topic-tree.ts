@@ -3,6 +3,7 @@ import { css, html, LitElement, type TemplateResult } from "lit";
 import { emit } from "../events.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
+import "../components/ui-pencil-button.js";
 import "../components/ui-notice.js";
 
 /**
@@ -45,11 +46,11 @@ export class PnaTopicTree extends LitElement {
       ul ul {
         margin-left: 14px;
         padding-left: 10px;
-        border-left: 1px solid var(--pna-border);
+        border-left: 1px dashed var(--pna-line);
       }
 
       li {
-        margin: 4px 0;
+        margin: 0;
       }
 
       .row {
@@ -66,22 +67,23 @@ export class PnaTopicTree extends LitElement {
         align-items: flex-start;
         gap: 2px;
         min-height: var(--pna-tap);
-        padding: 6px 10px;
-        border: 1px solid transparent;
-        border-radius: var(--pna-radius-sm);
-        background: var(--pna-surface);
+        padding: 8px 2px 9px;
+        border: none;
+        border-bottom: 1px solid var(--pna-line);
+        background: none;
         color: inherit;
         font: inherit;
         text-align: left;
         cursor: pointer;
       }
 
-      .open[aria-current="true"] {
-        border-color: var(--pna-accent);
+      .open[aria-current="true"] .title {
+        font-weight: 650;
       }
 
       .title {
         font-weight: 500;
+        font-size: 1.05rem;
       }
 
       .meta {
@@ -156,11 +158,10 @@ export class PnaTopicTree extends LitElement {
     if (this.nodes.length === 0) {
       return html`
         <ui-notice tone="empty" message="Тем пока нет. Создайте первую — и укажите, что именно в ней интересно.">
-          <ui-button
+          <ui-pencil-button
             slot="actions"
-            variant="primary"
             @click=${() => emit<TopicId | null>(this, "topic-create", null)}
-            >Создать тему</ui-button
+            >Создать тему</ui-pencil-button
           >
         </ui-notice>
       `;

@@ -11,7 +11,7 @@ const render = (task: ProgramTaskView) => {
 };
 
 const button = (element: PnaProgramList, label: string) =>
-  queryAll<HTMLElement>(element, "ui-button").find((b) => b.textContent?.includes(label)) ?? null;
+  queryAll<HTMLElement>(element, "ui-button, ui-pencil-button").find((b) => b.textContent?.includes(label)) ?? null;
 
 describe("pna-program-list generation status", () => {
   it("shows a program being drafted, even after a restart, and says the app may be closed", async () => {

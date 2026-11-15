@@ -4,6 +4,7 @@ import { emit } from "../events.js";
 import { CONTINUATION_LABEL, formatPercent, formatSessions } from "../format/labels.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
+import "../components/ui-pencil-button.js";
 import "../components/ui-chip.js";
 import "../components/ui-notice.js";
 import "../components/ui-progress.js";
@@ -162,13 +163,12 @@ export class PnaProgramList extends LitElement {
           )}
 
         <div class="new">
-          <ui-button
-            variant="primary"
+          <ui-pencil-button
             ?disabled=${running}
             @click=${() => {
               if (!running) emit(this, "program-new", null);
             }}
-            >Новая программа</ui-button
+            >Новая программа</ui-pencil-button
           >
         </div>
       </div>

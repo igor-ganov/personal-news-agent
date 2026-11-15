@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const API_PORT = 18787;
-const APP_ORIGIN = "http://localhost:4321";
+// Not Astro's default 4321: Windows (Hyper-V) can reserve the range around it.
+const APP_PORT = 14321;
+const APP_ORIGIN = `http://localhost:${APP_PORT}`;
 const MAX_WAIT_MS = Number(process.env.E2E_MAX_WAIT_MS ?? 10_000);
 
 /**
@@ -31,7 +33,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "pnpm --filter @pna/mobile exec astro dev",
+      command: `pnpm --filter @pna/mobile exec astro dev --port ${APP_PORT}`,
       url: APP_ORIGIN,
       env: { PUBLIC_PNA_API_URL: `http://localhost:${API_PORT}`, PUBLIC_PNA_DIAGRAMS: "off" },
       reuseExistingServer: false,

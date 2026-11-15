@@ -1,4 +1,5 @@
 import { css, html, LitElement } from "lit";
+import { drawnCss, drawnFrame, nextSeed } from "../sketch/drawn.js";
 import { baseCss } from "../styles/tokens.js";
 
 /**
@@ -18,6 +19,8 @@ export class UiButton extends LitElement {
   declare disabled: boolean;
   declare busy: boolean;
 
+  private readonly seed = nextSeed();
+
   constructor() {
     super();
     this.variant = "secondary";
@@ -28,31 +31,43 @@ export class UiButton extends LitElement {
 
   static override styles = [
     baseCss,
+    drawnCss,
     css`
       :host {
         display: inline-flex;
       }
 
       button {
+        position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: var(--pna-gap-sm);
         min-height: var(--pna-tap);
         padding: 0 16px;
-        border-radius: var(--pna-radius-sm);
-        border: 1px solid var(--pna-border);
-        background: var(--pna-surface);
+        border: none;
+        background: none;
         color: var(--pna-text);
         font: inherit;
         font-weight: 500;
         cursor: pointer;
         width: 100%;
-        transition: opacity 0.12s ease;
+        transition: transform 0.08s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button .frame {
+        color: var(--pna-text-dim);
       }
 
       button:active {
-        opacity: 0.7;
+        transform: translateY(1px);
+      }
+
+      button:focus-visible {
+        outline: 2px solid var(--pna-text);
+        outline-offset: 3px;
+        border-radius: var(--pna-radius-sm);
       }
 
       button:disabled {
@@ -62,26 +77,46 @@ export class UiButton extends LitElement {
 
       :host([size="sm"]) button,
       button.sm {
-        min-height: 34px;
-        padding: 0 10px;
-        font-size: 0.85rem;
+        min-height: 36px;
+        padding: 0 12px;
+        font-size: 0.9rem;
       }
 
       button.primary {
-        background: var(--pna-accent);
-        border-color: var(--pna-accent);
-        color: var(--pna-accent-text);
+        font-weight: 650;
+      }
+
+      button.primary .frame {
+        color: var(--pna-text);
+      }
+
+      button.primary .frame path {
+        stroke-width: 2;
       }
 
       button.ghost {
-        background: transparent;
-        border-color: transparent;
+        color: var(--pna-text-dim);
       }
 
       button.danger {
-        background: transparent;
-        border-color: var(--pna-danger);
         color: var(--pna-danger);
+      }
+
+      button.danger .frame {
+        color: var(--pna-danger);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        button.primary,
+        button.primary .frame {
+          color: var(--pna-accent);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        button {
+          transition: none;
+        }
       }
 
       .spinner {
@@ -116,6 +151,7 @@ export class UiButton extends LitElement {
       >
         ${this.busy ? html`<span class="spinner" aria-hidden="true"></span>` : null}
         <slot></slot>
+        ${this.variant === "ghost" ? null : drawnFrame(this.seed, 36)}
       </button>
     `;
   }

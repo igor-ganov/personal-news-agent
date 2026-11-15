@@ -61,23 +61,35 @@ export class UiField extends LitElement {
       textarea {
         width: 100%;
         min-height: var(--pna-tap);
-        padding: 10px 12px;
-        border-radius: var(--pna-radius-sm);
-        border: 1px solid var(--pna-border);
-        background: var(--pna-bg);
+        padding: 8px 2px;
+        border: none;
+        border-bottom: 1.5px solid var(--pna-text-dim);
+        border-radius: 0;
+        background: transparent;
         color: var(--pna-text);
         font: inherit;
         resize: vertical;
       }
 
+      /* A ruled sheet: each line of text sits on a pencil rule. */
       textarea {
-        line-height: 1.45;
+        --rule: 1.6em;
+        line-height: var(--rule);
+        padding-top: 0;
+        border-bottom: none;
+        background-image: repeating-linear-gradient(
+          180deg,
+          transparent 0 calc(var(--rule) - 1px),
+          var(--pna-line) calc(var(--rule) - 1px) var(--rule)
+        );
+        background-attachment: local;
       }
 
       input:focus,
       textarea:focus {
-        outline: 2px solid var(--pna-accent);
-        outline-offset: -1px;
+        outline: none;
+        border-bottom-color: var(--pna-text);
+        box-shadow: 0 1.5px 0 var(--pna-text);
       }
 
       .hint,

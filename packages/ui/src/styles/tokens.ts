@@ -9,25 +9,29 @@ export const tokensCss = `
 :root {
   color-scheme: light dark;
 
-  --pna-bg: #ffffff;
-  --pna-surface: #f6f7f9;
-  --pna-surface-2: #eceef2;
-  --pna-border: #dcdfe5;
-  --pna-text: #14161a;
-  --pna-text-dim: #5b6270;
-  --pna-accent: #2f6df6;
-  --pna-accent-text: #ffffff;
-  --pna-danger: #c8392b;
-  --pna-ok: #1f7a4d;
-  --pna-warn: #9a6a00;
+  /* Ink on paper: a warm sheet, graphite text, pencil-grey rules. */
+  --pna-bg: #f6f4ef;
+  /* Panels are the same sheet: pencil lines, not grey fills, separate them. */
+  --pna-surface: #f6f4ef;
+  --pna-surface-2: #ece8de;
+  --pna-border: #c9c4b8;
+  --pna-line: #bdb8ae;
+  --pna-text: #22211f;
+  --pna-text-dim: #6b6862;
+  --pna-accent: #22211f;
+  --pna-accent-text: #f6f4ef;
+  --pna-danger: #a8322a;
+  --pna-ok: #2f6b3a;
+  --pna-warn: #8a6200;
 
-  --pna-radius: 12px;
-  --pna-radius-sm: 8px;
+  --pna-radius: 4px;
+  --pna-radius-sm: 3px;
   --pna-gap: 12px;
   --pna-gap-sm: 8px;
   --pna-gap-lg: 20px;
 
-  --pna-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --pna-font: "Literata Variable", Georgia, "Times New Roman", serif;
+  --pna-hand: "Caveat", "Segoe Print", cursive;
   --pna-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
   --pna-tap: 44px;
@@ -35,18 +39,25 @@ export const tokensCss = `
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --pna-bg: #101215;
-    --pna-surface: #181b20;
-    --pna-surface-2: #21252c;
-    --pna-border: #2c313a;
-    --pna-text: #e8eaee;
-    --pna-text-dim: #98a0ae;
-    --pna-accent: #5b8cff;
-    --pna-accent-text: #0b0d10;
-    --pna-danger: #ef6b5c;
-    --pna-ok: #4fbf8b;
-    --pna-warn: #d9a441;
+    /* A night notebook: blue-black paper, chalk-white ink, a yellow gel pen. */
+    --pna-bg: #1a2029;
+    --pna-surface: #1a2029;
+    --pna-surface-2: #242b36;
+    --pna-border: #3d4654;
+    --pna-line: rgba(241, 238, 230, 0.22);
+    --pna-text: #ece8df;
+    --pna-text-dim: #98a0ab;
+    --pna-accent: #f3c76e;
+    --pna-accent-text: #1a2029;
+    --pna-danger: #ef7b6c;
+    --pna-ok: #7cc49a;
+    --pna-warn: #e0b45a;
   }
+}
+
+/* Inherited into every shadow root: native sliders and checkboxes take the ink. */
+html {
+  accent-color: var(--pna-text);
 }
 
 html, body {

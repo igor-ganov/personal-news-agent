@@ -1,4 +1,5 @@
 import { css, html, LitElement } from "lit";
+import { drawnCss, drawnOval, nextSeed } from "../sketch/drawn.js";
 import { baseCss } from "../styles/tokens.js";
 
 export type ChipTone = "neutral" | "accent" | "ok" | "warn" | "danger";
@@ -15,6 +16,8 @@ export class UiChip extends LitElement {
   declare selectable: boolean;
   declare selected: boolean;
 
+  private readonly seed = nextSeed();
+
   constructor() {
     super();
     this.tone = "neutral";
@@ -24,53 +27,63 @@ export class UiChip extends LitElement {
 
   static override styles = [
     baseCss,
+    drawnCss,
     css`
       :host {
         display: inline-flex;
       }
 
       .chip {
+        position: relative;
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 3px 10px;
-        border-radius: 999px;
-        border: 1px solid var(--pna-border);
-        background: var(--pna-surface-2);
+        padding: 2px 4px;
+        border: none;
+        background: none;
         color: var(--pna-text-dim);
-        font-size: 0.78rem;
-        line-height: 1.6;
+        font-size: 0.8rem;
+        line-height: 1.5;
         white-space: nowrap;
       }
 
       button.chip {
-        min-height: 32px;
+        min-height: var(--pna-tap);
+        padding: 0 10px;
         font: inherit;
-        font-size: 0.85rem;
+        font-size: 0.95rem;
         cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button.chip:focus-visible {
+        outline: 2px solid var(--pna-text);
+        outline-offset: 2px;
+        border-radius: var(--pna-radius-sm);
       }
 
       .accent {
         color: var(--pna-accent);
-        border-color: var(--pna-accent);
       }
       .ok {
         color: var(--pna-ok);
-        border-color: var(--pna-ok);
       }
       .warn {
         color: var(--pna-warn);
-        border-color: var(--pna-warn);
       }
       .danger {
         color: var(--pna-danger);
-        border-color: var(--pna-danger);
       }
 
       :host([selected]) .chip {
-        background: var(--pna-accent);
-        border-color: var(--pna-accent);
-        color: var(--pna-accent-text);
+        color: var(--pna-text);
+        font-weight: 600;
+      }
+
+      .oval {
+        inset: 3px -4px;
+        width: calc(100% + 8px);
+        height: calc(100% - 6px);
       }
     `,
   ];
@@ -83,6 +96,7 @@ export class UiChip extends LitElement {
           aria-pressed=${this.selected ? "true" : "false"}
         >
           <slot></slot>
+          ${this.selected ? drawnOval(this.seed) : null}
         </button>`
       : html`<span class="chip ${this.tone}" part="chip"><slot></slot></span>`;
   }

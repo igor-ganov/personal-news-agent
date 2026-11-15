@@ -463,14 +463,13 @@ export class PnaTopicScreen extends ConnectedElement {
         )}
         ${this._addingSubtopic
           ? this.renderSubtopicForm(topic.title)
-          : html`<ui-button
-              size="sm"
+          : html`<ui-pencil-button
               @click=${() => {
                 this._formError = "";
                 this.setupFor.topic.reset();
                 this._addingSubtopic = true;
               }}
-              >Добавить подтему</ui-button
+              >Добавить подтему</ui-pencil-button
             >`}
       </div>
 

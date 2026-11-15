@@ -1,6 +1,12 @@
 import { css, html, LitElement } from "lit";
 import { emit } from "../events.js";
+import { sketchLine } from "../sketch/path.js";
+import { seedOf } from "../sketch/seed.js";
 import { baseCss } from "../styles/tokens.js";
+
+/** The pencil stroke under the selected tab, its own for every tab. */
+const markFor = (id: string): string =>
+  [sketchLine({ seed: seedOf(id), wobble: 1.6 })(2, 4, 78, 3.4), sketchLine({ seed: seedOf(id) + 1, wobble: 1.2 })(6, 6.6, 72, 6.2)].join(" ");
 
 export interface TabDef {
   readonly id: string;
@@ -45,8 +51,8 @@ export class PnaTabs extends LitElement {
         flex: 1 0 auto;
         min-height: 42px;
         padding: 0 14px;
+        position: relative;
         border: none;
-        border-bottom: 2px solid transparent;
         background: none;
         color: var(--pna-text-dim);
         font: inherit;
@@ -57,7 +63,26 @@ export class PnaTabs extends LitElement {
 
       button[aria-selected="true"] {
         color: var(--pna-text);
-        border-bottom-color: var(--pna-accent);
+        font-weight: 600;
+      }
+
+      .mark {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        bottom: 3px;
+        width: calc(100% - 16px);
+        height: 10px;
+        overflow: visible;
+      }
+
+      .mark path {
+        fill: none;
+        stroke: var(--pna-text);
+        stroke-width: 2;
+        stroke-linecap: round;
+        opacity: 0.85;
+        vector-effect: non-scaling-stroke;
       }
 
       .badge {
@@ -79,6 +104,9 @@ export class PnaTabs extends LitElement {
               @click=${() => emit<string>(this, "tab-select", tab.id)}
             >
               ${tab.label}${tab.badge ? html`<span class="badge">${tab.badge}</span>` : null}
+              ${this.active === tab.id
+                ? html`<svg class="mark" aria-hidden="true" viewBox="0 0 80 10" preserveAspectRatio="none"><path d=${markFor(tab.id)}></path></svg>`
+                : null}
             </button>
           `,
         )}

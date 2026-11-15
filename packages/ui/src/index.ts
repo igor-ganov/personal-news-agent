@@ -12,6 +12,9 @@ export * from "./diagrams/renderer.js";
 export * from "./routing/route.js";
 
 export * from "./components/ui-button.js";
+export * from "./components/ui-pencil-button.js";
+export * from "./sketch/path.js";
+export * from "./sketch/seed.js";
 export * from "./components/ui-card.js";
 export * from "./components/ui-chip.js";
 export * from "./components/ui-diagram.js";

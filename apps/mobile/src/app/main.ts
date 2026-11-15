@@ -16,6 +16,8 @@ import {
 } from "@pna/app";
 import { createAuthClient, createJobsClient, createSessionStore, createTransport } from "@pna/auth";
 import { createSecretStore } from "@pna/storage";
+import "@fontsource-variable/literata";
+import "@fontsource/caveat/600.css";
 import { tokensCss } from "@pna/ui";
 import { setAppContext } from "./context.js";
 import { registerDiagramRenderer } from "./diagrams.js";

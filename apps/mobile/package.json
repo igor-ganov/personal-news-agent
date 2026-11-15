@@ -1,6 +1,6 @@
 {
   "name": "@pna/mobile",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,8 @@
     "android:build": "tauri android build --apk --target aarch64"
   },
   "dependencies": {
+    "@fontsource-variable/literata": "^5.3.0",
+    "@fontsource/caveat": "^5.3.0",
     "@pna/agent": "workspace:*",
     "@pna/app": "workspace:*",
     "@pna/auth": "workspace:*",

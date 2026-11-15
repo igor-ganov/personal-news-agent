@@ -67,23 +67,23 @@ export class PnaTopicsScreen extends ConnectedElement {
     navigate(routeHref({ name: "topic", topicId: result.value.id, tab: "news" }));
   }
 
+  private readonly toggleCreating = (): void => {
+    this._creating = !this._creating;
+    this._parentId = null;
+    this.setupFor.reset();
+  };
+
   override render() {
     const state = this.ctx.store.getState();
     const tree = buildTree(state.topics);
 
     return html`
       <pna-app-bar heading="Мои темы">
-        <ui-button
-          slot="actions"
-          size="sm"
-          variant=${this._creating ? "ghost" : "primary"}
-          @click=${() => {
-            this._creating = !this._creating;
-            this._parentId = null;
-            this.setupFor.reset();
-          }}
-          >${this._creating ? "Закрыть" : "Новая"}</ui-button
-        >
+        ${this._creating
+          ? html`<ui-button slot="actions" size="sm" variant="ghost" @click=${this.toggleCreating}
+              >Закрыть</ui-button
+            >`
+          : html`<ui-pencil-button slot="actions" @click=${this.toggleCreating}>Новая</ui-pencil-button>`}
       </pna-app-bar>
 
       <main>

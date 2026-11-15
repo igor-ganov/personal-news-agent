@@ -1,4 +1,5 @@
 import { css, html, LitElement } from "lit";
+import { drawnCss, drawnFrame, nextSeed } from "../sketch/drawn.js";
 import { baseCss } from "../styles/tokens.js";
 
 export type NoticeTone = "info" | "error" | "empty";
@@ -13,6 +14,8 @@ export class UiNotice extends LitElement {
   declare tone: NoticeTone;
   declare message: string;
 
+  private readonly seed = nextSeed();
+
   constructor() {
     super();
     this.tone = "info";
@@ -21,27 +24,30 @@ export class UiNotice extends LitElement {
 
   static override styles = [
     baseCss,
+    drawnCss,
     css`
       :host {
         display: block;
       }
 
       .notice {
+        position: relative;
         padding: var(--pna-gap);
-        border-radius: var(--pna-radius-sm);
-        border: 1px solid var(--pna-border);
-        background: var(--pna-surface);
-        font-size: 0.9rem;
+        font-size: 0.95rem;
+      }
+
+      .info {
+        color: var(--pna-text-dim);
+        padding-inline: 0;
       }
 
       .error {
-        border-color: var(--pna-danger);
         color: var(--pna-danger);
       }
 
       .empty {
-        border-style: dashed;
         color: var(--pna-text-dim);
+        font-style: italic;
         text-align: center;
       }
 
@@ -60,6 +66,7 @@ export class UiNotice extends LitElement {
         ${this.message ? html`<div>${this.message}</div>` : null}
         <slot></slot>
         <div class="actions"><slot name="actions"></slot></div>
+        ${this.tone === "error" ? drawnFrame(this.seed, 36) : null}
       </div>
     `;
   }

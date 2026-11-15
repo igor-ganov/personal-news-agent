@@ -1,5 +1,6 @@
 import { css, html, LitElement } from "lit";
 import { emit } from "../events.js";
+import { drawnCss, drawnRule, nextSeed } from "../sketch/drawn.js";
 import { baseCss } from "../styles/tokens.js";
 
 /** The sticky top bar: optional back button, title, and a slot for actions. */
@@ -14,6 +15,8 @@ export class PnaAppBar extends LitElement {
   declare subtitle: string;
   declare canGoBack: boolean;
 
+  private readonly seed = nextSeed();
+
   constructor() {
     super();
     this.heading = "";
@@ -23,6 +26,7 @@ export class PnaAppBar extends LitElement {
 
   static override styles = [
     baseCss,
+    drawnCss,
     css`
       :host {
         display: block;
@@ -30,7 +34,6 @@ export class PnaAppBar extends LitElement {
         top: 0;
         z-index: 10;
         background: var(--pna-bg);
-        border-bottom: 1px solid var(--pna-border);
         padding-top: env(safe-area-inset-top);
       }
 
@@ -43,14 +46,34 @@ export class PnaAppBar extends LitElement {
       }
 
       .back {
-        min-width: 36px;
-        min-height: 36px;
+        display: grid;
+        place-items: center;
+        width: var(--pna-tap);
+        height: var(--pna-tap);
+        margin-left: -10px;
         border: none;
         background: none;
-        color: var(--pna-accent);
-        font: inherit;
-        font-size: 1.2rem;
+        color: var(--pna-text);
         cursor: pointer;
+      }
+
+      .back svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      .back path {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .back {
+          color: var(--pna-accent);
+        }
       }
 
       h1 {
@@ -72,7 +95,9 @@ export class PnaAppBar extends LitElement {
       <div class="bar">
         ${this.canGoBack
           ? html`<button class="back" aria-label="Назад" @click=${() => emit(this, "go-back", null)}>
-              ‹
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M15.5 5.2 C 12.6 8.1 10.4 10.3 7.6 12.2 C 10.5 14 12.8 16.1 15.2 19"></path>
+              </svg>
             </button>`
           : null}
         <div class="grow">
@@ -82,6 +107,7 @@ export class PnaAppBar extends LitElement {
         <slot name="actions"></slot>
       </div>
       <slot name="tabs"></slot>
+      ${drawnRule(this.seed)}
     `;
   }
 }
