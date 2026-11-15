@@ -59,4 +59,28 @@ describe("createJobsClient — progress and ideas", () => {
     expect(sent).toEqual([request]);
     expect(result).toEqual({ ok: true, value: [{ title: "Pin" }] });
   });
+
+  it("asks for a card's settings on their own path and hands them back", async () => {
+    const urls: string[] = [];
+    const transport = createTransport({
+      baseUrl: "https://api.example",
+      fetch: async (url) => {
+        urls.push(String(url));
+        return Response.json({ setup: { weeks: 4 } });
+      },
+    });
+
+    const result = await createJobsClient(transport).setup("token", { kind: "skill", title: "Rust" });
+
+    expect(urls).toEqual(["https://api.example/suggest/setup"]);
+    expect(result).toEqual({ ok: true, value: { weeks: 4 } });
+  });
+
+  it("calls an answer without settings a server error", async () => {
+    const transport = createTransport({ baseUrl: "https://api.example", fetch: async () => Response.json({}) });
+
+    const result = await createJobsClient(transport).setup("token", { kind: "skill", title: "Rust" });
+
+    expect(result.ok).toBe(false);
+  });
 });

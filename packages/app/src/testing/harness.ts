@@ -65,4 +65,5 @@ export const failingProvider = (
   writeLesson: async () => ({ ok: false, error }),
   buildQuiz: async () => ({ ok: false, error }),
   suggest: async () => ({ ok: false, error }),
+  proposeSetup: async () => ({ ok: false, error }),
 });

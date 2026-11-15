@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # credential already registered, so treat it as permanent.
 [vars]
 RP_ID = "pna-api.igor-ganov.workers.dev"
-RP_NAME = "Личный агент"
+RP_NAME = "Skill Grower"
 ALLOWED_ORIGINS = "https://pna-api.igor-ganov.workers.dev,http://localhost:4321,http://tauri.localhost"
 ANDROID_PACKAGE_NAME = "dev.ganov.pna"
 # SHA-256 отпечатки ключей, которыми подписан APK. Ключ, которого здесь нет,

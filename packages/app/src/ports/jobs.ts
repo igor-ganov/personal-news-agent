@@ -1,6 +1,6 @@
 import type { AgentJobKind } from "@pna/agent/jobs";
-import type { SuggestInput } from "@pna/agent";
-import type { Result, Suggestion } from "@pna/core";
+import type { SetupInput, SuggestInput } from "@pna/agent";
+import type { Result, Setup, Suggestion } from "@pna/core";
 import type { AppError } from "../errors.js";
 
 /**
@@ -61,4 +61,6 @@ export interface JobsGateway {
   setCredentials(apiKey: string, model: string): Promise<Result<GeneratorCredentials, AppError>>;
   /** Ideas for a card, answered while the user waits rather than queued. */
   suggest(request: SuggestInput): Promise<Result<readonly Suggestion[], AppError>>;
+  /** Settings for a card from its name, answered the same way. */
+  setup(request: SetupInput): Promise<Result<Setup, AppError>>;
 }

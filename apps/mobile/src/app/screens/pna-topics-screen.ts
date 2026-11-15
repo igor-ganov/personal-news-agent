@@ -4,6 +4,7 @@ import { routeHref, type TopicFormValue } from "@pna/ui";
 import { css, html } from "lit";
 import { ConnectedElement } from "../context.js";
 import { navigate } from "../router.js";
+import { NO_SETUP, setupAsker, type SetupView } from "../setup-view.js";
 import "@pna/ui";
 
 /** The root screen: every topic the user follows, and the way to add one. */
@@ -12,17 +13,23 @@ export class PnaTopicsScreen extends ConnectedElement {
     _creating: { state: true },
     _parentId: { state: true },
     _error: { state: true },
+    _setup: { state: true },
   };
 
   private declare _creating: boolean;
   private declare _parentId: TopicId | null;
   private declare _error: string;
+  private declare _setup: SetupView;
+  private readonly setupFor = setupAsker(this.ctx, (view) => {
+    this._setup = view;
+  });
 
   constructor() {
     super();
     this._creating = false;
     this._parentId = null;
     this._error = "";
+    this._setup = NO_SETUP;
   }
 
   static override styles = css`
@@ -73,6 +80,7 @@ export class PnaTopicsScreen extends ConnectedElement {
           @click=${() => {
             this._creating = !this._creating;
             this._parentId = null;
+            this.setupFor.reset();
           }}
           >${this._creating ? "Закрыть" : "Новая"}</ui-button
         >
@@ -82,6 +90,10 @@ export class PnaTopicsScreen extends ConnectedElement {
         ${this._creating
           ? html`<pna-topic-form
               .error=${this._error}
+              .setup=${this._setup.setup}
+              ?setupBusy=${this._setup.busy}
+              .setupError=${this._setup.error}
+              @setup-request=${(e: CustomEvent<string>) => void this.setupFor.ask({ kind: "topic", title: e.detail })}
               @topic-save=${(e: CustomEvent<TopicFormValue>) => this.save(e.detail)}
               @topic-cancel=${() => {
                 this._creating = false;
@@ -98,6 +110,7 @@ export class PnaTopicsScreen extends ConnectedElement {
                   navigate(routeHref({ name: "topic", topicId: e.detail, tab: "news" }))}
                 @topic-create=${() => {
                   this._creating = true;
+                  this.setupFor.reset();
                 }}
               ></pna-topic-tree>
             </div>`}

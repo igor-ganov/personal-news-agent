@@ -33,6 +33,7 @@ import {
   type ProgramDraft,
   type ProgramId,
   type Schedule,
+  type SetupKind,
   type ContinuationMode,
   type SourceId,
   type Suggestion,
@@ -51,6 +52,7 @@ import {
 import { css, html, type TemplateResult } from "lit";
 import { ConnectedElement } from "../context.js";
 import { navigate } from "../router.js";
+import { NO_SETUP, setupAsker, type SetupAsker, type SetupView } from "../setup-view.js";
 import "@pna/ui";
 
 const TABS = [
@@ -98,6 +100,7 @@ export class PnaTopicScreen extends ConnectedElement {
     topicId: { type: String },
     tab: { type: String },
     _ideas: { state: true },
+    _setup: { state: true },
     _addingSubtopic: { state: true },
     _mode: { state: true },
     _edited: { state: true },
@@ -115,7 +118,13 @@ export class PnaTopicScreen extends ConnectedElement {
   private declare _editing: boolean;
   private declare _formError: string;
   private declare _ideas: Readonly<Record<SuggestionKind, IdeasState>>;
+  /** Settings proposed for the name typed on the open card: a subtopic, or a skill goal. */
+  private declare _setup: Readonly<Record<SetupKind, SetupView>>;
   private declare _addingSubtopic: boolean;
+  private readonly setupFor: Readonly<Record<SetupKind, SetupAsker>> = {
+    topic: setupAsker(this.ctx, (view) => this.showSetup("topic", view)),
+    skill: setupAsker(this.ctx, (view) => this.showSetup("skill", view)),
+  };
   private refreshed = new Set<string>();
 
   constructor() {
@@ -127,6 +136,7 @@ export class PnaTopicScreen extends ConnectedElement {
     this._editing = false;
     this._formError = "";
     this._ideas = { subtopic: NO_IDEAS, skill: NO_IDEAS };
+    this._setup = { topic: NO_SETUP, skill: NO_SETUP };
     this._addingSubtopic = false;
   }
 
@@ -209,6 +219,16 @@ export class PnaTopicScreen extends ConnectedElement {
     );
   }
 
+  private showSetup(kind: SetupKind, view: SetupView): void {
+    this._setup = { ...this._setup, [kind]: view };
+  }
+
+  /** Opens the program wizard with nothing proposed yet. */
+  private openWizard(): void {
+    this.setupFor.skill.reset();
+    this._mode = "wizard";
+  }
+
   private goTab(tab: string): void {
     navigate(routeHref({ name: "topic", topicId: this.topicId, tab: tab as TopicTab }));
   }
@@ -250,7 +270,7 @@ export class PnaTopicScreen extends ConnectedElement {
   private retryPlan(): void {
     const request = this.lastRequest();
     if (!request) {
-      this._mode = "wizard";
+      this.openWizard();
       return;
     }
     const startDay = calendarDay(this.ctx.deps.clock.now().slice(0, 10));
@@ -365,6 +385,11 @@ export class PnaTopicScreen extends ConnectedElement {
         ?ideasBusy=${this._ideas.skill.busy}
         .ideasError=${this._ideas.skill.error}
         @suggestions-more=${() => void this.moreIdeas("skill")}
+        .setup=${this._setup.skill.setup}
+        ?setupBusy=${this._setup.skill.busy}
+        .setupError=${this._setup.skill.error}
+        @setup-request=${(e: CustomEvent<string>) =>
+          void this.setupFor.skill.ask({ kind: "skill", title: e.detail, topicId: this.topicId })}
         @program-request=${(e: CustomEvent<ProgramRequest>) => this.requestPlan(e.detail)}
       ></pna-program-wizard>`;
     }
@@ -376,9 +401,7 @@ export class PnaTopicScreen extends ConnectedElement {
       .task=${task}
       @program-open=${(e: CustomEvent<ProgramId>) =>
         navigate(routeHref({ name: "program", programId: e.detail }))}
-      @program-new=${() => {
-        this._mode = "wizard";
-      }}
+      @program-new=${() => this.openWizard()}
       @program-retry=${() => this.retryPlan()}
       @program-dismiss=${() => void dismissJob(this.ctx, key)}
     ></pna-program-list>`;
@@ -444,6 +467,7 @@ export class PnaTopicScreen extends ConnectedElement {
               size="sm"
               @click=${() => {
                 this._formError = "";
+                this.setupFor.topic.reset();
                 this._addingSubtopic = true;
               }}
               >Добавить подтему</ui-button
@@ -473,6 +497,11 @@ export class PnaTopicScreen extends ConnectedElement {
       ?ideasBusy=${this._ideas.subtopic.busy}
       .ideasError=${this._ideas.subtopic.error}
       @suggestions-more=${() => void this.moreIdeas("subtopic")}
+      .setup=${this._setup.topic.setup}
+      ?setupBusy=${this._setup.topic.busy}
+      .setupError=${this._setup.topic.error}
+      @setup-request=${(e: CustomEvent<string>) =>
+        void this.setupFor.topic.ask({ kind: "topic", title: e.detail, topicId: this.topicId })}
       @topic-save=${(e: CustomEvent<TopicFormValue>) => this.createSubtopic(e.detail)}
       @topic-cancel=${() => {
         this._addingSubtopic = false;

@@ -1,4 +1,4 @@
-import { mapResult, type DigestPeriod } from "@pna/core";
+import { err, flatMapResult, mapResult, ok, type DigestPeriod, type Setup } from "@pna/core";
 import type {
   BuildDigestInput,
   BuildQuizInput,
@@ -6,12 +6,17 @@ import type {
   DiscoverSourcesInput,
   DraftProgramInput,
   GenerationOptions,
+  ProviderError,
+  ProviderResult,
+  SetupInput,
   SuggestInput,
   WriteLessonInput,
 } from "../ports/content-provider.js";
 import { lastHeading, lastString } from "../progress/watch.js";
 import { suggestPrompt, suggestSystem, SUGGEST_TOOL } from "../prompts/suggest.js";
 import { suggestSchema, toSuggestions } from "../schemas/suggest.js";
+import { setupPrompt, setupSystem, SETUP_TOOL } from "../prompts/setup.js";
+import { SETUP_SCHEMAS, toSetup } from "../schemas/setup.js";
 import { digestPrompt, digestSystem, DIGEST_TOOL } from "../prompts/digest.js";
 import { lessonPrompt, lessonSystem, LESSON_TOOL } from "../prompts/lesson.js";
 import { programPrompt, programSystem, PROGRAM_TOOL } from "../prompts/program.js";
@@ -51,6 +56,11 @@ export interface AnthropicProviderConfig {
    */
   readonly allowBrowser?: boolean;
 }
+
+const UNREADABLE_SETUP: ProviderError = {
+  kind: "invalid-output",
+  message: "Не получилось разобрать предложенные настройки",
+};
 
 /** How hard each kind of call should search. Longer windows warrant more digging. */
 const DIGEST_SEARCHES: Record<DigestPeriod, number> = { day: 8, week: 12, month: 16, year: 20 };
@@ -191,6 +201,26 @@ const buildProvider = (resolve: RuntimeResolver, options: ProviderOptions): Cont
         effort: "low",
       });
       return mapResult(result, toSuggestions);
+    },
+
+    async proposeSetup(input: SetupInput): Promise<ProviderResult<Setup>> {
+      const { client, config } = await runner();
+      const result = await runStructured(client, config, {
+        system: setupSystem(),
+        prompt: setupPrompt(input),
+        toolName: SETUP_TOOL,
+        toolDescription: "Report the proposed settings.",
+        schema: SETUP_SCHEMAS[input.kind],
+        maxTokens: 3000,
+        // Answered the moment the user leaves the name field: knowledge, not research.
+        maxSearches: 0,
+        blockedDomains: [],
+        effort: "low",
+      });
+      return flatMapResult(result, (payload) => {
+        const setup = toSetup(input.kind)(payload);
+        return setup ? ok(setup) : err(UNREADABLE_SETUP);
+      });
     },
   };
 };

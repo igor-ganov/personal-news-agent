@@ -115,6 +115,8 @@ export interface JobsClient {
   ): Promise<Result<ProviderKeyStatus, AuthError>>;
   /** Ideas for a card, answered in the request; the list is opaque here. */
   suggest(token: string, request: unknown): Promise<Result<readonly unknown[], AuthError>>;
+  /** Settings for a card from its name; the answer is opaque here, read by the app. */
+  setup(token: string, request: unknown): Promise<Result<unknown, AuthError>>;
 }
 
 export const createJobsClient = (transport: Transport): JobsClient => ({
@@ -174,6 +176,19 @@ export const createJobsClient = (transport: Transport): JobsClient => ({
     const { suggestions } = response.value;
     return Array.isArray(suggestions)
       ? ok(suggestions)
+      : err(authError("server", "Сервер вернул непонятный ответ"));
+  },
+
+  async setup(token, request) {
+    const response = await transport.request<{ setup?: unknown }>("/suggest/setup", {
+      method: "POST",
+      token,
+      body: request,
+    });
+    if (!response.ok) return response;
+    const { setup } = response.value;
+    return typeof setup === "object" && setup !== null
+      ? ok(setup)
       : err(authError("server", "Сервер вернул непонятный ответ"));
   },
 });

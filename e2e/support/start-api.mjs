@@ -26,7 +26,7 @@ if (migrated.status !== 0) process.exit(migrated.status ?? 1);
 
 // The fresh start hands its prepared profile to the first account only. Specs
 // run side by side, so every spec that signs in gets a copy of its own.
-const SPECS_THAT_SIGN_IN = 2;
+const SPECS_THAT_SIGN_IN = 3;
 const copies = Array.from(
   { length: SPECS_THAT_SIGN_IN - 1 },
   (_, n) => `INSERT INTO account_seeds (id, body, created_at) SELECT id || '-copy-${n}', body, created_at FROM account_seeds WHERE id NOT LIKE '%-copy-%';`,

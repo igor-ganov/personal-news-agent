@@ -96,6 +96,14 @@ export class UiField extends LitElement {
     `,
   ];
 
+  /** `field-change` fires when the user commits a value: leaves the field or presses Enter. */
+  private commit(event: Event): void {
+    const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+    this.dispatchEvent(
+      new CustomEvent("field-change", { detail: target.value, bubbles: true, composed: true }),
+    );
+  }
+
   private emit(event: Event): void {
     const target = event.target as HTMLInputElement | HTMLTextAreaElement;
     this.value = target.value;
@@ -113,6 +121,7 @@ export class UiField extends LitElement {
           placeholder=${this.placeholder}
           ?disabled=${this.disabled}
           @input=${(e: Event) => this.emit(e)}
+          @change=${(e: Event) => this.commit(e)}
         ></textarea>`
       : html`<input
           id="control"
@@ -121,6 +130,7 @@ export class UiField extends LitElement {
           placeholder=${this.placeholder}
           ?disabled=${this.disabled}
           @input=${(e: Event) => this.emit(e)}
+          @change=${(e: Event) => this.commit(e)}
         />`;
 
     return html`

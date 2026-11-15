@@ -1,6 +1,6 @@
 import { calendarDay } from "@pna/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { mount, query, unmountAll } from "../testing/dom.js";
+import { capture, mount, query, unmountAll } from "../testing/dom.js";
 import { PnaProgramWizard, type ProgramRequest } from "./pna-program-wizard.js";
 
 afterEach(unmountAll);
@@ -60,5 +60,56 @@ describe("pna-program-wizard ideas", () => {
     await element.updateComplete;
 
     expect(intentField(element)?.value).toBe("Профилировать async: Находить, где тормозит рантайм");
+  });
+});
+
+const pace = { kind: "skill" as const, weeks: 8, sessionsPerWeek: 2, minutesPerSession: 60, note: "Eight weeks fit" };
+
+const slider = (element: PnaProgramWizard, label: string) =>
+  query<HTMLInputElement>(element, `input[aria-label="${label}"]`);
+
+describe("pna-program-wizard time budget from the goal", () => {
+  it("asks for a budget when the goal is committed or an idea is picked", async () => {
+    const element = new PnaProgramWizard();
+    await mount(element);
+    const asked = capture<string>(element, "setup-request");
+
+    intentField(element)?.dispatchEvent(new CustomEvent("field-change", { detail: " Rust ", bubbles: true, composed: true }));
+    query<HTMLElement>(element, "pna-suggestions")?.dispatchEvent(
+      new CustomEvent("suggestion-pick", {
+        detail: { title: "Zig", summary: "", brief: "", focus: [] },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+
+    expect(asked).toEqual(["Rust", "Zig"]);
+  });
+
+  it("moves the sliders the user has not moved, and shows why", async () => {
+    const element = new PnaProgramWizard();
+    await mount(element);
+    const minutes = slider(element, "Минут за раз");
+    if (minutes) minutes.value = "30";
+    minutes?.dispatchEvent(new Event("input"));
+
+    element.setup = pace;
+    await element.updateComplete;
+
+    expect(slider(element, "Длительность")?.value).toBe("8");
+    expect(slider(element, "Занятий в неделю")?.value).toBe("2");
+    expect(slider(element, "Минут за раз")?.value).toBe("30");
+    expect(query(element, "[role=status]")?.textContent).toContain("Eight weeks fit");
+  });
+
+  it("keeps the budget of a request it was reopened with", async () => {
+    const element = new PnaProgramWizard();
+    element.initial = request("goal");
+    await mount(element);
+
+    element.setup = { ...pace, weeks: 12 };
+    await element.updateComplete;
+
+    expect(slider(element, "Длительность")?.value).toBe("6");
   });
 });

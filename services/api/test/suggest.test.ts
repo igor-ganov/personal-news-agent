@@ -1,7 +1,7 @@
 import { createMockProvider } from "@pna/agent";
 import { describe, expect, it } from "vitest";
 import type { RunnerDeps } from "../src/jobs/runner.js";
-import { readSuggestRequest, suggestFor } from "../src/suggest.js";
+import { readSetupRequest, readSuggestRequest, setupFor, suggestFor } from "../src/suggest.js";
 
 const context = {
   topic: { title: "Rust" },
@@ -41,6 +41,38 @@ describe("suggestions request", () => {
   it("says so when the account has no key to generate with", async () => {
     const input = readSuggestRequest({ kind: "skill", context });
     const result = input ? await suggestFor(deps(false), "acc", input) : undefined;
+    expect(result?.ok).toBe(false);
+  });
+});
+
+describe("setup request — settings from a typed name", () => {
+  it("reads a topic request with or without a context", () => {
+    expect(readSetupRequest({ kind: "topic", title: " Rust ", language: "en" })).toEqual({
+      kind: "topic",
+      title: "Rust",
+      language: "en",
+    });
+    expect(readSetupRequest({ kind: "skill", title: "Async", context })).toMatchObject({
+      kind: "skill",
+      language: "ru",
+      context,
+    });
+  });
+
+  it("refuses an unknown kind or an empty name", () => {
+    expect(readSetupRequest({ kind: "poem", title: "x" })).toBeUndefined();
+    expect(readSetupRequest({ kind: "topic", title: "  " })).toBeUndefined();
+  });
+
+  it("answers with settings that follow the name", async () => {
+    const input = readSetupRequest({ kind: "skill", title: "Async", context });
+    const result = input ? await setupFor(deps(true), "acc", input) : undefined;
+    expect(result?.ok && result.value).toMatchObject({ kind: "skill", weeks: 6 });
+  });
+
+  it("says so when the account has no key to generate with", async () => {
+    const input = readSetupRequest({ kind: "topic", title: "Rust" });
+    const result = input ? await setupFor(deps(false), "acc", input) : undefined;
     expect(result?.ok).toBe(false);
   });
 });

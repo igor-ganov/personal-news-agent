@@ -19,6 +19,7 @@ export const createDelegatingProvider = (
   writeLesson: async (input, options) => (await resolve()).writeLesson(input, options),
   buildQuiz: async (input, options) => (await resolve()).buildQuiz(input, options),
   suggest: async (input) => (await resolve()).suggest(input),
+  proposeSetup: async (input) => (await resolve()).proposeSetup(input),
 });
 
 /**

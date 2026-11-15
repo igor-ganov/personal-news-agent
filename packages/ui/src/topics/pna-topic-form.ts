@@ -1,7 +1,9 @@
-import { TOPIC_LEVELS, type Suggestion, type Topic, type TopicLevel } from "@pna/core";
+import { TOPIC_LEVELS, type Setup, type Suggestion, type Topic, type TopicLevel } from "@pna/core";
 import { css, html, LitElement, type PropertyValues } from "lit";
 import { emit } from "../events.js";
 import { LEVEL_LABEL } from "../format/labels.js";
+import { fillUntouched, touch } from "../setup/fill.js";
+import { renderSetupStatus } from "../setup/setup-status.js";
 import { baseCss } from "../styles/tokens.js";
 import { emptyFocusRow, type FocusRow } from "./pna-focus-editor.js";
 import "../components/ui-button.js";
@@ -18,7 +20,21 @@ export interface TopicFormValue {
   readonly focusAreas: readonly FocusRow[];
 }
 
-/** Creates or edits a topic, including its focus areas and anti-interests. */
+/** The fields a proposal from the name may fill; the name itself is always the user's. */
+const SETUP_FIELDS = ["brief", "level", "focusAreas", "excludes"] as const;
+
+type SetupField = (typeof SETUP_FIELDS)[number];
+
+const focusRows = (titles: readonly string[]): readonly FocusRow[] =>
+  titles.length > 0 ? titles.map((title) => ({ title, detail: "", weight: 3 })) : [emptyFocusRow()];
+
+/**
+ * Creates or edits a topic, including its focus areas and anti-interests.
+ *
+ * A new card asks for settings once its name is committed (`setup-request`),
+ * and fills whatever the user has not written themselves from the `setup`
+ * the screen hands back. Editing an existing topic never asks.
+ */
 export class PnaTopicForm extends LitElement {
   static override properties = {
     topic: { type: Object },
@@ -28,6 +44,9 @@ export class PnaTopicForm extends LitElement {
     ideas: { type: Array },
     ideasBusy: { type: Boolean },
     ideasError: { type: String },
+    setup: { type: Object },
+    setupBusy: { type: Boolean },
+    setupError: { type: String },
     _picked: { state: true },
     _value: { state: true },
   };
@@ -40,7 +59,14 @@ export class PnaTopicForm extends LitElement {
   declare ideas: readonly Suggestion[];
   declare ideasBusy: boolean;
   declare ideasError: string;
+  /** Settings proposed for the typed name; applied to every field the user has not touched. */
+  declare setup: Setup | undefined;
+  declare setupBusy: boolean;
+  declare setupError: string;
   private declare _picked: string;
+  private _touched: ReadonlySet<SetupField> = new Set();
+  /** The name settings were last asked for, so leaving the field again asks nothing new. */
+  private asked = "";
   private declare _value: TopicFormValue;
 
   constructor() {
@@ -52,6 +78,9 @@ export class PnaTopicForm extends LitElement {
     this.ideas = [];
     this.ideasBusy = false;
     this.ideasError = "";
+    this.setup = undefined;
+    this.setupBusy = false;
+    this.setupError = "";
     this._picked = "";
     this._value = { title: "", brief: "", level: "intermediate", excludes: [], focusAreas: [] };
   }
@@ -105,11 +134,31 @@ export class PnaTopicForm extends LitElement {
         color: var(--pna-danger);
         font-size: 0.85rem;
       }
+
+      .setup-status {
+        margin: calc(-1 * var(--pna-gap-sm)) 0 0;
+        min-height: 1em;
+        font-size: 0.85rem;
+        color: var(--pna-text-dim);
+      }
     `,
   ];
 
   override willUpdate(changed: PropertyValues<this>): void {
-    if (!changed.has("topic")) return;
+    if (changed.has("topic")) this.load();
+    if (changed.has("setup") && this.setup?.kind === "topic") this.applySetup(this.setup);
+  }
+
+  private applySetup(setup: Extract<Setup, { kind: "topic" }>): void {
+    this._value = fillUntouched(
+      SETUP_FIELDS,
+      this._value,
+      { brief: setup.brief, level: setup.level, focusAreas: focusRows(setup.focus), excludes: setup.excludes },
+      this._touched,
+    );
+  }
+
+  private load(): void {
     this._value = this.topic
       ? {
           title: this.topic.title,
@@ -129,17 +178,25 @@ export class PnaTopicForm extends LitElement {
     this._value = { ...this._value, ...patch };
   }
 
+  /** A field the user edited by hand: no proposal writes over it again. */
+  private edit<F extends SetupField>(field: F, value: TopicFormValue[F]): void {
+    this._touched = touch(this._touched, field);
+    this.patch({ [field]: value });
+  }
+
+  /** The name was committed: a new card asks for settings for it, once per name. */
+  private commitTitle(title: string): void {
+    const name = title.trim();
+    if (this.topic || name.length === 0 || name === this.asked) return;
+    this.asked = name;
+    emit<string>(this, "setup-request", name);
+  }
+
   /** A picked idea fills the card; the level and exclusions stay the user's. */
   private pick(idea: Suggestion): void {
     this._picked = idea.title;
-    this.patch({
-      title: idea.title,
-      brief: idea.brief,
-      focusAreas:
-        idea.focus.length > 0
-          ? idea.focus.map((title) => ({ title, detail: "", weight: 3 }))
-          : [emptyFocusRow()],
-    });
+    this._touched = touch(this._touched, "brief", "focusAreas");
+    this.patch({ title: idea.title, brief: idea.brief, focusAreas: focusRows(idea.focus) });
   }
 
   private renderIdeas() {
@@ -174,7 +231,17 @@ export class PnaTopicForm extends LitElement {
           placeholder="Например: Локальный инференс"
           .value=${this._value.title}
           @field-input=${(e: CustomEvent<string>) => this.patch({ title: e.detail })}
+          @field-change=${(e: CustomEvent<string>) => this.commitTitle(e.detail)}
         ></ui-field>
+        ${this.topic
+          ? null
+          : renderSetupStatus({
+              busy: this.setupBusy,
+              error: this.setupError,
+              ready: this.setup?.kind === "topic",
+              working: "Подбираю настройки по названию…",
+              done: "Настройки подобраны по названию — их можно поправить",
+            })}
 
         <ui-field
           label="Что интересно в этой теме"
@@ -182,7 +249,7 @@ export class PnaTopicForm extends LitElement {
           multiline
           rows="4"
           .value=${this._value.brief}
-          @field-input=${(e: CustomEvent<string>) => this.patch({ brief: e.detail })}
+          @field-input=${(e: CustomEvent<string>) => this.edit("brief", e.detail)}
         ></ui-field>
 
         <fieldset>
@@ -193,7 +260,7 @@ export class PnaTopicForm extends LitElement {
                 <ui-chip
                   selectable
                   ?selected=${this._value.level === level}
-                  @click=${() => this.patch({ level })}
+                  @click=${() => this.edit("level", level)}
                   >${LEVEL_LABEL[level]}</ui-chip
                 >
               `,
@@ -206,7 +273,7 @@ export class PnaTopicForm extends LitElement {
           <pna-focus-editor
             .rows=${this._value.focusAreas}
             @focus-change=${(e: CustomEvent<readonly FocusRow[]>) =>
-              this.patch({ focusAreas: e.detail })}
+              this.edit("focusAreas", e.detail)}
           ></pna-focus-editor>
         </fieldset>
 
@@ -216,7 +283,7 @@ export class PnaTopicForm extends LitElement {
           multiline
           .value=${this._value.excludes.join("\n")}
           @field-input=${(e: CustomEvent<string>) =>
-            this.patch({ excludes: e.detail.split("\n") })}
+            this.edit("excludes", e.detail.split("\n"))}
         ></ui-field>
 
         ${this.error ? html`<p class="error">${this.error}</p>` : null}

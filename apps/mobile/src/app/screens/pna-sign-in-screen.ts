@@ -90,7 +90,7 @@ export class PnaSignInScreen extends LitElement {
     const asking = this._phase === "asking";
     return html`
       <main>
-        <h1>Личный агент</h1>
+        <h1>Skill Grower</h1>
         <p role="status">${asking ? "Подтвердите вход ключом доступа…" : "Вход по ключу доступа"}</p>
         ${this._error ? html`<ui-notice tone="error" .message=${this._error}></ui-notice>` : null}
         <ui-button ?disabled=${asking} @click=${() => void this.attempt(() => this.service.enter())}

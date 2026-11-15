@@ -1,9 +1,19 @@
-import type { ProviderError, ProviderResult, SuggestInput } from "@pna/agent";
-import { err, isSuggestionKind, SUGGESTION_BATCH, type Suggestion, type TopicContext } from "@pna/core";
+import type { ProviderError, ProviderResult, SetupInput, SuggestInput } from "@pna/agent";
+import {
+  err,
+  isSetupKind,
+  isSuggestionKind,
+  SUGGESTION_BATCH,
+  type Setup,
+  type Suggestion,
+  type TopicContext,
+} from "@pna/core";
 import type { RunnerDeps } from "./jobs/runner.js";
 
 const MAX_EXCLUDED = 200;
 const MAX_TITLE = 300;
+const MAX_LANGUAGE = 16;
+const DEFAULT_LANGUAGE = "ru";
 
 const NO_CREDENTIALS: ProviderError = {
   kind: "auth",
@@ -60,4 +70,39 @@ export const suggestFor = async (
   const credentials = await deps.credentials(accountId);
   if (!credentials) return err(NO_CREDENTIALS);
   return deps.provider(credentials).suggest(input);
+};
+
+const fieldsOf = (raw: unknown): Readonly<Record<string, unknown>> =>
+  typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+
+const name = (value: unknown): string => (typeof value === "string" ? value.trim().slice(0, MAX_TITLE) : "");
+
+/** The context's own language wins; a new root topic says which one it wants. */
+const languageOf = (value: unknown, context: TopicContext | undefined): string =>
+  context?.language ??
+  (typeof value === "string" && value.trim().length > 0 ? value.trim().slice(0, MAX_LANGUAGE) : DEFAULT_LANGUAGE);
+
+/** Reads a request for a card's settings: its kind, the typed name, and where it goes. */
+export const readSetupRequest = (raw: unknown): SetupInput | undefined => {
+  const fields = fieldsOf(raw);
+  const title = name(fields.title);
+  if (!isSetupKind(fields.kind) || title.length === 0) return undefined;
+  const context = isContext(fields.context) ? fields.context : undefined;
+  return {
+    kind: fields.kind,
+    title,
+    language: languageOf(fields.language, context),
+    ...(context ? { context } : {}),
+  };
+};
+
+/** Settings for a card, answered in the request — the same reasoning as `suggestFor`. */
+export const setupFor = async (
+  deps: RunnerDeps,
+  accountId: string,
+  input: SetupInput,
+): Promise<ProviderResult<Setup>> => {
+  const credentials = await deps.credentials(accountId);
+  if (!credentials) return err(NO_CREDENTIALS);
+  return deps.provider(credentials).proposeSetup(input);
 };

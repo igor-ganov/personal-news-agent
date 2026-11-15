@@ -1,9 +1,12 @@
 import {
   CONTINUATION_MODES,
+  WIZARD_INTENSITY,
   type CalendarDay,
   type ContinuationMode,
+  type Intensity,
   type ProgramId,
   type Schedule,
+  type Setup,
   type SkillProgram,
   type Suggestion,
 } from "@pna/core";
@@ -14,6 +17,8 @@ import {
   CONTINUATION_LABEL,
   formatSessions,
 } from "../format/labels.js";
+import { fillUntouched, touch } from "../setup/fill.js";
+import { renderSetupStatus } from "../setup/setup-status.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-chip.js";
@@ -28,9 +33,31 @@ export interface ProgramRequest {
   readonly continuation: ContinuationMode;
 }
 
+type IntensityField = keyof Intensity;
+
+const INTENSITY_FIELDS: readonly IntensityField[] = ["weeks", "sessionsPerWeek", "minutesPerSession"];
+
+/** One slider of the time budget: its label, unit, and range. */
+interface SliderSpec {
+  readonly field: IntensityField;
+  readonly label: string;
+  readonly suffix: string;
+}
+
+const SLIDERS: readonly SliderSpec[] = [
+  { field: "weeks", label: "Длительность", suffix: " нед." },
+  { field: "sessionsPerWeek", label: "Занятий в неделю", suffix: "" },
+  { field: "minutesPerSession", label: "Минут за раз", suffix: " мин" },
+];
+
+const DEFAULT_INTENSITY: Intensity = { weeks: 4, sessionsPerWeek: 3, minutesPerSession: 45 };
+
 /**
  * Collects what the plan should be built from: the intent, the time budget, and
  * which existing programs this one continues — the "скилл на основе скилов" case.
+ *
+ * Once the goal is committed (or picked from an idea) it asks for a time budget
+ * (`setup-request`) and moves every slider the user has not moved themselves.
  */
 export class PnaProgramWizard extends LitElement {
   static override properties = {
@@ -42,11 +69,12 @@ export class PnaProgramWizard extends LitElement {
     ideas: { type: Array },
     ideasBusy: { type: Boolean },
     ideasError: { type: String },
+    setup: { type: Object },
+    setupBusy: { type: Boolean },
+    setupError: { type: String },
     _picked: { state: true },
     _intent: { state: true },
-    _weeks: { state: true },
-    _sessions: { state: true },
-    _minutes: { state: true },
+    _intensity: { state: true },
     _continuation: { state: true },
     _basedOn: { state: true },
   };
@@ -64,13 +92,18 @@ export class PnaProgramWizard extends LitElement {
   declare ideas: readonly Suggestion[];
   declare ideasBusy: boolean;
   declare ideasError: string;
+  /** A time budget proposed for the goal; applied to every slider the user has not moved. */
+  declare setup: Setup | undefined;
+  declare setupBusy: boolean;
+  declare setupError: string;
   private declare _picked: string;
   private declare _intent: string;
-  private declare _weeks: number;
-  private declare _sessions: number;
-  private declare _minutes: number;
+  private declare _intensity: Intensity;
   private declare _continuation: ContinuationMode;
   private declare _basedOn: readonly ProgramId[];
+  private touched: ReadonlySet<IntensityField> = new Set();
+  /** The goal a budget was last asked for, so leaving the field again asks nothing new. */
+  private asked = "";
 
   constructor() {
     super();
@@ -82,11 +115,12 @@ export class PnaProgramWizard extends LitElement {
     this.ideas = [];
     this.ideasBusy = false;
     this.ideasError = "";
+    this.setup = undefined;
+    this.setupBusy = false;
+    this.setupError = "";
     this._picked = "";
     this._intent = "";
-    this._weeks = 4;
-    this._sessions = 3;
-    this._minutes = 45;
+    this._intensity = DEFAULT_INTENSITY;
     this._continuation = "fresh";
     this._basedOn = [];
   }
@@ -138,10 +172,16 @@ export class PnaProgramWizard extends LitElement {
         font-variant-numeric: tabular-nums;
       }
 
-      .budget {
+      .budget,
+      .setup-status {
         margin-top: var(--pna-gap-sm);
         font-size: 0.85rem;
         color: var(--pna-text-dim);
+      }
+
+      .setup-status {
+        margin-bottom: 0;
+        min-height: 1em;
       }
 
       .chips {
@@ -170,14 +210,15 @@ export class PnaProgramWizard extends LitElement {
     if (this._basedOn.length === 0) this._continuation = "fresh";
   }
 
-  private slider(
-    label: string,
-    value: number,
-    min: number,
-    max: number,
-    suffix: string,
-    apply: (next: number) => void,
-  ) {
+  /** A slider moved by hand: no proposal moves it again. */
+  private move(field: IntensityField, value: number): void {
+    this.touched = touch(this.touched, field);
+    this._intensity = { ...this._intensity, [field]: value };
+  }
+
+  private slider({ field, label, suffix }: SliderSpec) {
+    const { min, max } = WIZARD_INTENSITY[field];
+    const value = this._intensity[field];
     return html`
       <div class="slider">
         <span>${label}</span>
@@ -188,7 +229,7 @@ export class PnaProgramWizard extends LitElement {
           step="1"
           aria-label=${label}
           .value=${String(value)}
-          @input=${(e: Event) => apply(Number((e.target as HTMLInputElement).value))}
+          @input=${(e: Event) => this.move(field, Number((e.target as HTMLInputElement).value))}
         />
         <span>${value}${suffix}</span>
       </div>
@@ -199,26 +240,42 @@ export class PnaProgramWizard extends LitElement {
   private prefilled = "";
 
   override willUpdate(changed: PropertyValues<this>): void {
-    if (!changed.has("initial") || !this.initial) return;
-    const fingerprint = JSON.stringify(this.initial);
-    if (fingerprint === this.prefilled) return;
-    this.prefilled = fingerprint;
-    this.prefill(this.initial);
+    if (changed.has("initial") && this.initial) this.reopen(this.initial);
+    if (changed.has("setup") && this.setup?.kind === "skill") {
+      this._intensity = fillUntouched(INTENSITY_FIELDS, this._intensity, this.setup, this.touched);
+    }
   }
 
+  private reopen(request: ProgramRequest): void {
+    const fingerprint = JSON.stringify(request);
+    if (fingerprint === this.prefilled) return;
+    this.prefilled = fingerprint;
+    this.prefill(request);
+  }
+
+  /** A reopened request's budget was chosen by the user, so it counts as touched. */
   private prefill(request: ProgramRequest): void {
     this._intent = request.intent;
-    this._weeks = request.schedule.intensity.weeks;
-    this._sessions = request.schedule.intensity.sessionsPerWeek;
-    this._minutes = request.schedule.intensity.minutesPerSession;
+    this._intensity = request.schedule.intensity;
+    this.touched = new Set(INTENSITY_FIELDS);
+    this.asked = request.intent.trim();
     this._continuation = request.continuation;
     this._basedOn = request.basedOn;
+  }
+
+  /** The goal was committed: ask for a budget for it, once per goal. */
+  private commitIntent(intent: string): void {
+    const goal = intent.trim();
+    if (goal.length === 0 || goal === this.asked) return;
+    this.asked = goal;
+    emit<string>(this, "setup-request", goal);
   }
 
   /** A picked skill becomes the goal, written out in full and left to edit. */
   private pick(idea: Suggestion): void {
     this._picked = idea.title;
     this._intent = idea.brief ? `${idea.title}: ${idea.brief}` : idea.title;
+    this.commitIntent(this._intent);
   }
 
   private submit(): void {
@@ -226,19 +283,28 @@ export class PnaProgramWizard extends LitElement {
       intent: this._intent,
       schedule: {
         startDay: this.startDay as CalendarDay,
-        intensity: {
-          weeks: this._weeks,
-          sessionsPerWeek: this._sessions,
-          minutesPerSession: this._minutes,
-        },
+        intensity: this._intensity,
       },
       basedOn: this._basedOn,
       continuation: this._continuation,
     });
   }
 
+  private renderSetupStatus() {
+    return renderSetupStatus({
+      busy: this.setupBusy,
+      error: this.setupError,
+      ready: this.setup?.kind === "skill",
+      working: "Подбираю длительность и темп…",
+      done:
+        (this.setup?.kind === "skill" && this.setup.note) ||
+        "Длительность и темп подобраны по цели — их можно поправить",
+    });
+  }
+
   override render() {
-    const total = this._weeks * this._sessions;
+    const { weeks, sessionsPerWeek } = this._intensity;
+    const total = weeks * sessionsPerWeek;
     const modes = this._basedOn.length === 0 ? (["fresh"] as const) : CONTINUATION_MODES;
 
     return html`
@@ -256,23 +322,21 @@ export class PnaProgramWizard extends LitElement {
         </section>
 
         <section>
-          <h3>Чего хотите добиться</h3>
           <ui-field
+            label="Чего хотите добиться"
             multiline
             rows="3"
             placeholder="Например: научиться гонять 30B локально и понимать, где теряется качество"
             .value=${this._intent}
             @field-input=${(e: CustomEvent<string>) => (this._intent = e.detail)}
+            @field-change=${(e: CustomEvent<string>) => this.commitIntent(e.detail)}
           ></ui-field>
         </section>
 
         <section>
           <h3>Интенсивность</h3>
-          <div class="sliders">
-            ${this.slider("Длительность", this._weeks, 1, 26, " нед.", (n) => (this._weeks = n))}
-            ${this.slider("Занятий в неделю", this._sessions, 1, 7, "", (n) => (this._sessions = n))}
-            ${this.slider("Минут за раз", this._minutes, 15, 120, " мин", (n) => (this._minutes = n))}
-          </div>
+          <div class="sliders">${SLIDERS.map((spec) => this.slider(spec))}</div>
+          ${this.renderSetupStatus()}
           <p class="budget">Получается ${formatSessions(total)} — столько лекций и попадёт в план.</p>
         </section>
 

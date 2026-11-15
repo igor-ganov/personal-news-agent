@@ -1,5 +1,5 @@
 import type { AuthError, JobsClient, RemoteJob } from "@pna/auth";
-import { err, ok, readSuggestions, type Result } from "@pna/core";
+import { err, ok, readSetup, readSuggestions, type Result } from "@pna/core";
 import { appError, type AppError } from "../errors.js";
 import type { JobView, JobsGateway } from "../ports/jobs.js";
 
@@ -63,6 +63,13 @@ export const createRemoteJobs = (client: JobsClient, sessions: TokenSource): Job
     async suggest(request) {
       const answered = await withToken((token) => client.suggest(token, request));
       return answered.ok ? ok(readSuggestions(answered.value)) : answered;
+    },
+
+    async setup(request) {
+      const answered = await withToken((token) => client.setup(token, request));
+      if (!answered.ok) return answered;
+      const setup = readSetup(request.kind, answered.value);
+      return setup ? ok(setup) : err(appError("server", "Сервер вернул непонятные настройки"));
     },
   };
 };

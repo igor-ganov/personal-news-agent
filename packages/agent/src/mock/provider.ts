@@ -5,6 +5,8 @@ import {
   type ProgramDraft,
   type QuizDraft,
   type SourceCandidate,
+  type Setup,
+  type SetupKind,
   type Suggestion,
   type SuggestionKind,
 } from "@pna/core";
@@ -15,6 +17,7 @@ import type {
   DiscoverSourcesInput,
   DraftProgramInput,
   GenerationOptions,
+  SetupInput,
   SuggestInput,
   WriteLessonInput,
 } from "../ports/content-provider.js";
@@ -30,6 +33,24 @@ const ideaOf = (kind: SuggestionKind, topic: string, n: number): Suggestion => (
   brief: kind === "skill" ? `Научиться применять идею ${n} на практике` : `Следить за направлением ${n} внутри темы «${topic}»`,
   focus: kind === "skill" ? [] : [`Фокус ${n}.1`, `Фокус ${n}.2`],
 });
+
+/** The mock's settings name the typed title, so a test sees them follow the name. */
+const SETUP_OF: { readonly [K in SetupKind]: (title: string) => Setup } = {
+  topic: (title) => ({
+    kind: "topic",
+    brief: `Хочу следить за «${title}»: что выходит нового и что из этого применимо на практике.`,
+    level: "advanced",
+    focus: [`${title}: релизы`, `${title}: практика`, `${title}: подводные камни`],
+    excludes: ["Реклама и пресс-релизы"],
+  }),
+  skill: (title) => ({
+    kind: "skill",
+    weeks: 6,
+    sessionsPerWeek: 2,
+    minutesPerSession: 60,
+    note: `6 недель по 2 занятия — хватит, чтобы освоить «${title}» на практике.`,
+  }),
+};
 
 const hash = (value: string): string => {
   let h = 0;
@@ -194,5 +215,9 @@ export const createMockProvider = (): ContentProvider => ({
         .filter((idea) => !excluded.has(idea.title))
         .slice(0, input.count),
     );
+  },
+
+  async proposeSetup(input: SetupInput) {
+    return ok(SETUP_OF[input.kind](input.title));
   },
 });

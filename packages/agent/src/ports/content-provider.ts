@@ -13,6 +13,8 @@ import type {
   SourceCandidate,
   Suggestion,
   SuggestionKind,
+  Setup,
+  SetupKind,
   TopicContext,
   Window,
 } from "@pna/core";
@@ -104,6 +106,17 @@ export interface SuggestInput {
   readonly count: number;
 }
 
+export interface SetupInput {
+  /** What the card is: a topic (or subtopic), or a skill to learn. */
+  readonly kind: SetupKind;
+  /** The name the user typed: a topic title, or a skill goal. */
+  readonly title: string;
+  /** Where the card goes: the parent of a subtopic, the topic of a skill; none for a new root topic. */
+  readonly context?: TopicContext;
+  /** BCP-47 language for the proposed text. */
+  readonly language: string;
+}
+
 /* --------------------------------------------------------------- the port -- */
 
 export type ProgressListener = (progress: GenerationProgress) => void;
@@ -133,4 +146,6 @@ export interface ContentProvider {
   buildQuiz(input: BuildQuizInput, options?: GenerationOptions): Promise<ProviderResult<QuizDraft>>;
   /** Ideas to start a card from — quick, no web search, answered while the user waits. */
   suggest(input: SuggestInput): Promise<ProviderResult<Suggestion[]>>;
+  /** Settings for a card from its name — as quick as `suggest`, answered while the user waits. */
+  proposeSetup(input: SetupInput): Promise<ProviderResult<Setup>>;
 }

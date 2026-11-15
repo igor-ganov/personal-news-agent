@@ -18,6 +18,7 @@ const serverWith = (initial: GeneratorCredentials) => {
       return ok(credentials);
     },
     suggest: async () => ok([]),
+    setup: async () => ok({ kind: "skill", weeks: 1, sessionsPerWeek: 1, minutesPerSession: 15, note: "" }),
   };
   return { gateway, uploads: () => uploads };
 };

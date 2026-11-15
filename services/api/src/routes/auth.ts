@@ -58,7 +58,7 @@ export const publicAccount = (row: {
  * differ between accounts — otherwise two keys on one phone look identical.
  */
 const handleFor = (email: string, accountId: string): string =>
-  email || `Личный агент ${accountId.slice(0, 4)}`;
+  email || `Skill Grower ${accountId.slice(0, 4)}`;
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 

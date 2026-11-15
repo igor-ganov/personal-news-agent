@@ -84,6 +84,7 @@ const fakeJobs = (initial: JobView[] = []) => {
       asked.push(request);
       return ok([{ title: "С сервера", summary: "", brief: "", focus: [] }]);
     },
+    setup: async () => ok({ kind: "skill", weeks: 1, sessionsPerWeek: 1, minutesPerSession: 15, note: "" }),
   };
 
   return {

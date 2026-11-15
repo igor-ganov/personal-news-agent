@@ -9,6 +9,7 @@ export * from "./prompts/program.js";
 export * from "./prompts/lesson.js";
 export * from "./prompts/quiz.js";
 export * from "./prompts/suggest.js";
+export * from "./prompts/setup.js";
 
 export * from "./schemas/json-schema.js";
 export * from "./schemas/instant.js";
@@ -18,6 +19,7 @@ export * from "./schemas/program.js";
 export * from "./schemas/lesson.js";
 export * from "./schemas/quiz.js";
 export * from "./schemas/suggest.js";
+export * from "./schemas/setup.js";
 
 export * from "./anthropic/errors.js";
 export * from "./anthropic/sdk.js";

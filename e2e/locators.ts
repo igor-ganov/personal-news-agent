@@ -3,6 +3,7 @@
  * place so a renamed button breaks one line, not every spec.
  */
 export const LABELS = {
+  appName: "Skill Grower",
   settings: "Настройки",
   accountAndSync: "Аккаунт и синхронизация",
   continue: "Продолжить",
@@ -22,6 +23,15 @@ export const LABELS = {
   subtopicIdeas: "Идеи подтем",
   skillIdeas: "Идеи навыков",
   titleField: "Название",
+  briefField: "Что интересно в этой теме",
+  focusField: "Что именно интересно",
+  advancedLevel: "продвинутый",
+  newTopic: "Новая",
+  goalField: "Чего хотите добиться",
+  weeksSlider: "Длительность",
+  sessionsSlider: "Занятий в неделю",
+  minutesSlider: "Минут за раз",
+  setupReady: "Настройки подобраны по названию",
   create: "Создать",
   queued: "В очереди на сервере — начнётся в течение минуты",
 } as const;

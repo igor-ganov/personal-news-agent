@@ -145,7 +145,7 @@ export class PnaAccountScreen extends ConnectedElement {
 
     if (outcome.value.kind === "stale-key") {
       this._notice =
-        "Телефон предложил ключ от аккаунта, которого больше нет. Удалите старые ключи «Личный агент» в менеджере паролей или заведите новый аккаунт.";
+        "Телефон предложил ключ от аккаунта, которого больше нет. Удалите старые ключи «Skill Grower» или «Личный агент» в менеджере паролей или заведите новый аккаунт.";
       this._offerCreate = outcome.value.email;
       return;
     }

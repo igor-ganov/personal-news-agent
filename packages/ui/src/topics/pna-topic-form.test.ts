@@ -1,3 +1,4 @@
+import { instantOf, topicId } from "@pna/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { capture, click, mount, query, queryAll, unmountAll } from "../testing/dom.js";
 import { PnaTopicForm, type TopicFormValue } from "./pna-topic-form.js";
@@ -46,5 +47,88 @@ describe("pna-topic-form ideas", () => {
         { title: "Pin", detail: "", weight: 3 },
       ],
     });
+  });
+});
+
+const proposal = (title: string) => ({
+  kind: "topic" as const,
+  brief: `About ${title}`,
+  level: "advanced" as const,
+  focus: [`${title}: releases`],
+  excludes: ["Ads"],
+});
+
+const typeInto = async (element: PnaTopicForm, index: number, text: string, commit = false) => {
+  const field = queryAll<HTMLElement>(element, "ui-field")[index];
+  field?.dispatchEvent(new CustomEvent("field-input", { detail: text, bubbles: true, composed: true }));
+  if (commit) field?.dispatchEvent(new CustomEvent("field-change", { detail: text, bubbles: true, composed: true }));
+  await element.updateComplete;
+};
+
+describe("pna-topic-form settings from the name", () => {
+  it("asks for settings when a new card's name is committed, once per name", async () => {
+    const element = new PnaTopicForm();
+    await mount(element);
+    const asked = capture<string>(element, "setup-request");
+
+    await typeInto(element, 0, "Rust", true);
+    await typeInto(element, 0, "Rust", true);
+    await typeInto(element, 0, "  ", true);
+
+    expect(asked).toEqual(["Rust"]);
+  });
+
+  it("never asks while an existing topic is edited", async () => {
+    const element = new PnaTopicForm();
+    element.topic = {
+      id: topicId("t1"),
+      parentId: null,
+      title: "Rust",
+      brief: "",
+      level: "intermediate",
+      language: "ru",
+      excludes: [],
+      focusAreas: [],
+      createdAt: instantOf("2026-11-15T00:00:00Z"),
+      updatedAt: instantOf("2026-11-15T00:00:00Z"),
+    };
+    await mount(element);
+    const asked = capture<string>(element, "setup-request");
+
+    await typeInto(element, 0, "Rust 2", true);
+
+    expect(asked).toEqual([]);
+  });
+
+  it("fills the card from a proposal, and a later one replaces only what the user did not write", async () => {
+    const element = new PnaTopicForm();
+    await mount(element);
+    const saved = capture<TopicFormValue>(element, "topic-save");
+
+    element.setup = proposal("Rust");
+    await element.updateComplete;
+    await typeInto(element, 1, "My own words");
+    element.setup = proposal("Zig");
+    await element.updateComplete;
+    query<HTMLFormElement>(element, "form")?.requestSubmit();
+
+    expect(saved[0]).toMatchObject({
+      brief: "My own words",
+      level: "advanced",
+      excludes: ["Ads"],
+      focusAreas: [{ title: "Zig: releases", detail: "", weight: 3 }],
+    });
+  });
+
+  it("says what it is doing with the name", async () => {
+    const element = new PnaTopicForm();
+    element.setupBusy = true;
+    await mount(element);
+    expect(query(element, "[role=status]")?.textContent).toContain("Подбираю настройки");
+
+    element.setupBusy = false;
+    element.setup = proposal("Rust");
+    await element.updateComplete;
+    expect(query(element, "[role=status]")?.textContent).toContain("Настройки подобраны по названию");
   });
 });
