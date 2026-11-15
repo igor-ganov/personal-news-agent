@@ -167,8 +167,14 @@ const authWiring = (kv: ReturnType<typeof platformStore>): AuthWiring | null => 
 };
 
 /** Design tokens live on :root so every shadow root can read them. */
+/**
+ * Tokens go in as a constructed stylesheet, not a <style> element: the packaged
+ * app's CSP carries a nonce (added by Tauri at build), which makes the WebView
+ * refuse script-created <style> elements, while adopted sheets are not subject
+ * to style-src. Lit adopts every component's styles the same way.
+ */
 const injectTokens = (): void => {
-  const style = globalThis.document.createElement("style");
-  style.textContent = tokensCss;
-  globalThis.document.head.append(style);
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(tokensCss);
+  globalThis.document.adoptedStyleSheets = [...globalThis.document.adoptedStyleSheets, sheet];
 };

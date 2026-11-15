@@ -1,6 +1,6 @@
 [package]
 name = "personal-news-agent"
-version = "0.6.0"
+version = "0.6.1"
 description = "Skill Grower: выжимки по источникам и программы обучения"
 authors = ["Igor Ganov"]
 edition = "2021"

@@ -56,3 +56,26 @@ test("a topic reads as ink on paper: book type, hand-drawn tab mark, a real penc
   const add = page.getByRole("button", { name: LABELS.addSubtopic });
   await expect(add.locator("svg[data-object='pencil']")).toBeVisible();
 });
+
+// The packaged app runs under Tauri's CSP. Tauri adds a nonce to style-src at
+// build time, and a nonce makes the browser ignore 'unsafe-inline', so a
+// <style> element created by script is refused on the phone.
+const TAURI_STYLE_POLICY = "style-src 'self' 'unsafe-inline' 'nonce-tauri-e2e'";
+
+test("the design survives the packaged app's content security policy", async ({ page }) => {
+  await page.route("/", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: { ...response.headers(), "content-security-policy": TAURI_STYLE_POLICY },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: LABELS.newAccount }).waitFor();
+
+  const look = await page.evaluate(() => ({
+    background: getComputedStyle(document.body).backgroundColor,
+    tap: getComputedStyle(document.documentElement).getPropertyValue("--pna-tap").trim(),
+  }));
+  expect(look).toEqual({ background: "rgb(246, 244, 239)", tap: "44px" });
+});
