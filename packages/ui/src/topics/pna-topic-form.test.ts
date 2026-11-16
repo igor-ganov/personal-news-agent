@@ -132,3 +132,20 @@ describe("pna-topic-form settings from the name", () => {
     expect(query(element, "[role=status]")?.textContent).toContain("Настройки подобраны по названию");
   });
 });
+
+describe("pna-topic-form at first sight", () => {
+  it("opens with the name and the interest only; the rest is folded with a line on what it holds", async () => {
+    const element = await mount(new PnaTopicForm());
+    const details = query<HTMLDetailsElement>(element, "details")!;
+    expect(details.open).toBe(false);
+    expect(details.querySelector("pna-focus-editor")).not.toBeNull();
+    expect(details.querySelector("summary")!.textContent).toMatch(/Тонкая настройка\s+уровень средний, 0 разделов/);
+  });
+
+  it("keeps the way to finish pinned under the card", async () => {
+    const element = await mount(new PnaTopicForm());
+    const css = [PnaTopicForm.styles].flat(3).map(String).join(" ");
+    expect(css).toMatch(/\.actions \{[^}]*position: sticky/);
+    expect(query(element, ".actions ui-button[variant='primary']")).not.toBeNull();
+  });
+});

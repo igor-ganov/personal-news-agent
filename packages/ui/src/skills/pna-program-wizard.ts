@@ -15,10 +15,12 @@ import { emit } from "../events.js";
 import {
   CONTINUATION_HINT,
   CONTINUATION_LABEL,
+  formatDate,
   formatSessions,
 } from "../format/labels.js";
 import { fillUntouched, touch } from "../setup/fill.js";
 import { renderSetupStatus } from "../setup/setup-status.js";
+import { drawnIcon, iconCss } from "../sketch/icons.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-chip.js";
@@ -51,6 +53,28 @@ const SLIDERS: readonly SliderSpec[] = [
 ];
 
 const DEFAULT_INTENSITY: Intensity = { weeks: 4, sessionsPerWeek: 3, minutesPerSession: 45 };
+
+/** A pace in one tap: how often and how long, the length of the plan left as it is. */
+interface Pace {
+  readonly label: string;
+  readonly sessionsPerWeek: number;
+  readonly minutesPerSession: number;
+}
+
+const PACES: readonly Pace[] = [
+  { label: "Лёгкий", sessionsPerWeek: 2, minutesPerSession: 20 },
+  { label: "Обычный", sessionsPerWeek: 3, minutesPerSession: 45 },
+  { label: "Интенсив", sessionsPerWeek: 5, minutesPerSession: 60 },
+];
+
+const DAY_MS = 86_400_000;
+
+/** The day a plan of so many weeks ends, counted from its first day. */
+const endDay = (startDay: string, weeks: number): string =>
+  startDay ? formatDate(new Date(Date.parse(`${startDay}T00:00:00Z`) + weeks * 7 * DAY_MS).toISOString()) : "";
+
+const paceLine = ({ weeks, sessionsPerWeek, minutesPerSession }: Intensity): string =>
+  `${weeks} нед. · ${sessionsPerWeek} в неделю · по ${minutesPerSession} мин`;
 
 /**
  * Collects what the plan should be built from: the intent, the time budget, and
@@ -127,6 +151,7 @@ export class PnaProgramWizard extends LitElement {
 
   static override styles = [
     baseCss,
+    iconCss,
     css`
       :host {
         display: block;
@@ -138,9 +163,9 @@ export class PnaProgramWizard extends LitElement {
 
       h3 {
         margin: 0 0 var(--pna-gap-sm);
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: 600;
         color: var(--pna-text-dim);
       }
 
@@ -157,7 +182,7 @@ export class PnaProgramWizard extends LitElement {
       }
 
       .slider span:first-child {
-        width: 8.5em;
+        width: 9.5em;
         font-size: 0.85rem;
         color: var(--pna-text-dim);
       }
@@ -196,6 +221,47 @@ export class PnaProgramWizard extends LitElement {
         color: var(--pna-text-dim);
       }
 
+      details {
+        margin-top: var(--pna-gap-sm);
+      }
+
+      summary {
+        display: flex;
+        align-items: center;
+        gap: var(--pna-gap-sm);
+        min-height: var(--pna-tap);
+        cursor: pointer;
+        list-style: none;
+      }
+
+      summary::-webkit-details-marker {
+        display: none;
+      }
+
+      summary:focus-visible {
+        outline: 2px solid var(--pna-text);
+        outline-offset: 2px;
+      }
+
+      summary .holds {
+        font-size: 0.85rem;
+        color: var(--pna-text-dim);
+      }
+
+      details[open] summary .icon {
+        transform: rotate(90deg);
+      }
+
+      /* The way to finish stays under the thumb however long the form grows. */
+      .submit {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        padding: var(--pna-gap-sm) 0 calc(var(--pna-gap-sm) + env(safe-area-inset-bottom));
+        background: var(--pna-bg);
+        border-top: 1px solid var(--pna-line);
+      }
+
       .submit ui-button {
         width: 100%;
       }
@@ -208,6 +274,16 @@ export class PnaProgramWizard extends LitElement {
       : [...this._basedOn, id];
     if (this._basedOn.length > 0 && this._continuation === "fresh") this._continuation = "deepen";
     if (this._basedOn.length === 0) this._continuation = "fresh";
+  }
+
+  /** A pace picked by hand counts as moving both of its sliders. */
+  private pace(pace: Pace): void {
+    this.touched = touch(this.touched, "sessionsPerWeek", "minutesPerSession");
+    this._intensity = {
+      ...this._intensity,
+      sessionsPerWeek: pace.sessionsPerWeek,
+      minutesPerSession: pace.minutesPerSession,
+    };
   }
 
   /** A slider moved by hand: no proposal moves it again. */
@@ -303,14 +379,22 @@ export class PnaProgramWizard extends LitElement {
   }
 
   override render() {
-    const { weeks, sessionsPerWeek } = this._intensity;
+    const { weeks, sessionsPerWeek, minutesPerSession } = this._intensity;
     const total = weeks * sessionsPerWeek;
-    const modes = this._basedOn.length === 0 ? (["fresh"] as const) : CONTINUATION_MODES;
+    const ends = endDay(this.startDay, weeks);
 
     return html`
       <div class="wizard">
         <section>
-          <h3>Идеи навыков</h3>
+          <ui-field
+            label="Чего хотите добиться"
+            multiline
+            rows="2"
+            placeholder="Например: гонять 30B локально и понимать, где теряется качество"
+            .value=${this._intent}
+            @field-input=${(e: CustomEvent<string>) => (this._intent = e.detail)}
+            @field-change=${(e: CustomEvent<string>) => this.commitIntent(e.detail)}
+          ></ui-field>
           <pna-suggestions
             label="Идеи навыков"
             .ideas=${this.ideas}
@@ -322,22 +406,29 @@ export class PnaProgramWizard extends LitElement {
         </section>
 
         <section>
-          <ui-field
-            label="Чего хотите добиться"
-            multiline
-            rows="3"
-            placeholder="Например: научиться гонять 30B локально и понимать, где теряется качество"
-            .value=${this._intent}
-            @field-input=${(e: CustomEvent<string>) => (this._intent = e.detail)}
-            @field-change=${(e: CustomEvent<string>) => this.commitIntent(e.detail)}
-          ></ui-field>
-        </section>
-
-        <section>
-          <h3>Интенсивность</h3>
-          <div class="sliders">${SLIDERS.map((spec) => this.slider(spec))}</div>
+          <h3>Темп</h3>
+          <div class="chips">
+            ${PACES.map(
+              (pace) => html`<ui-chip
+                selectable
+                ?selected=${pace.sessionsPerWeek === sessionsPerWeek && pace.minutesPerSession === minutesPerSession}
+                @click=${() => this.pace(pace)}
+                >${pace.label} · ${pace.sessionsPerWeek} по ${pace.minutesPerSession} мин</ui-chip
+              >`,
+            )}
+          </div>
           ${this.renderSetupStatus()}
-          <p class="budget">Получается ${formatSessions(total)} — столько лекций и попадёт в план.</p>
+          <p class="budget">
+            Получается ${formatSessions(total)}${ends ? `, до ${ends}` : ""}
+          </p>
+          <details>
+            <summary>
+              ${drawnIcon("closed")}
+              <span>Настроить</span>
+              <span class="holds">${paceLine(this._intensity)}</span>
+            </summary>
+            <div class="sliders">${SLIDERS.map((spec) => this.slider(spec))}</div>
+          </details>
         </section>
 
         ${this.availableBases.length > 0
@@ -360,22 +451,24 @@ export class PnaProgramWizard extends LitElement {
             `
           : null}
 
-        <section>
-          <h3>Как продолжаем</h3>
-          <div class="chips">
-            ${modes.map(
-              (mode) => html`
-                <ui-chip
-                  selectable
-                  ?selected=${this._continuation === mode}
-                  @click=${() => (this._continuation = mode)}
-                  >${CONTINUATION_LABEL[mode]}</ui-chip
-                >
-              `,
-            )}
-          </div>
-          <p class="hint">${CONTINUATION_HINT[this._continuation]}</p>
-        </section>
+        ${this._basedOn.length > 0
+          ? html`<section>
+              <h3>Как продолжаем</h3>
+              <div class="chips">
+                ${CONTINUATION_MODES.map(
+                  (mode) => html`
+                    <ui-chip
+                      selectable
+                      ?selected=${this._continuation === mode}
+                      @click=${() => (this._continuation = mode)}
+                      >${CONTINUATION_LABEL[mode]}</ui-chip
+                    >
+                  `,
+                )}
+              </div>
+              <p class="hint">${CONTINUATION_HINT[this._continuation]}</p>
+            </section>`
+          : null}
 
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}
 

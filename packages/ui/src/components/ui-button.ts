@@ -1,11 +1,23 @@
 import { css, html, LitElement } from "lit";
-import { drawnCss, drawnFrame, nextSeed } from "../sketch/drawn.js";
+import { drawnCss, drawnFrame, drawnUnder, nextSeed } from "../sketch/drawn.js";
 import { baseCss } from "../styles/tokens.js";
 
 /**
- * The app's only button. Tap targets are at least 44px so it stays usable on a
- * phone, and `busy` shows progress without changing the layout.
+ * The app's only button. How it is drawn says how much it matters: the main
+ * action of a screen is boxed, a secondary one underlined, a quiet one is plain
+ * text. Every size is a full 44px tap target, and `busy` shows progress
+ * without changing the layout.
  */
+type Variant = "primary" | "secondary" | "ghost" | "danger";
+
+/** What goes under the label: an underline marks a tappable word that has no box. */
+const MARK: Readonly<Record<Variant, (seed: number) => unknown>> = {
+  primary: () => null,
+  secondary: drawnUnder,
+  ghost: () => null,
+  danger: drawnUnder,
+};
+
 export class UiButton extends LitElement {
   static override properties = {
     variant: { type: String },
@@ -14,7 +26,7 @@ export class UiButton extends LitElement {
     busy: { type: Boolean },
   };
 
-  declare variant: "primary" | "secondary" | "ghost" | "danger";
+  declare variant: Variant;
   declare size: "md" | "sm";
   declare disabled: boolean;
   declare busy: boolean;
@@ -56,7 +68,11 @@ export class UiButton extends LitElement {
         -webkit-tap-highlight-color: transparent;
       }
 
-      button .frame {
+      .caption {
+        position: relative;
+      }
+
+      .under {
         color: var(--pna-text-dim);
       }
 
@@ -77,17 +93,19 @@ export class UiButton extends LitElement {
 
       :host([size="sm"]) button,
       button.sm {
-        min-height: 36px;
-        padding: 0 12px;
+        padding: 0 10px;
         font-size: 0.9rem;
+      }
+
+      button.secondary,
+      button.ghost,
+      button.danger {
+        padding-inline: 4px;
       }
 
       button.primary {
         font-weight: 650;
-      }
-
-      button.primary .frame {
-        color: var(--pna-text);
+        padding-inline: 20px;
       }
 
       button.primary .frame path {
@@ -95,22 +113,13 @@ export class UiButton extends LitElement {
       }
 
       button.ghost {
+        font-weight: 400;
         color: var(--pna-text-dim);
       }
 
-      button.danger {
+      button.danger,
+      button.danger .under {
         color: var(--pna-danger);
-      }
-
-      button.danger .frame {
-        color: var(--pna-danger);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        button.primary,
-        button.primary .frame {
-          color: var(--pna-accent);
-        }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -150,8 +159,8 @@ export class UiButton extends LitElement {
         part="button"
       >
         ${this.busy ? html`<span class="spinner" aria-hidden="true"></span>` : null}
-        <slot></slot>
-        ${this.variant === "ghost" ? null : drawnFrame(this.seed, 36)}
+        <span class="caption"><slot></slot>${MARK[this.variant](this.seed)}</span>
+        ${this.variant === "primary" ? drawnFrame(this.seed, 36) : null}
       </button>
     `;
   }

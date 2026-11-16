@@ -108,24 +108,22 @@ export class PnaSourceList extends LitElement {
 
     return html`
       <div class="sources">
-        <header>
-          <span class="counts"
-            >${formatSources(counts.active)} активно${counts.muted > 0
-              ? `, ${counts.muted} приглушено`
-              : ""}</span
-          >
-          <ui-button size="sm" ?busy=${this.busy} @click=${() => emit(this, "source-refresh", null)}
-            >Обновить список</ui-button
-          >
-        </header>
-
         ${this.busy
           ? html`<ui-task-status
               label="Ищу источники"
               .since=${this.since}
               .steps=${this.steps}
             ></ui-task-status>`
-          : null}
+          : html`<header>
+              <span class="counts"
+                >${formatSources(counts.active)} в работе${counts.muted > 0
+                  ? `, приглушено: ${counts.muted}`
+                  : ""}</span
+              >
+              <ui-button size="sm" @click=${() => emit(this, "source-refresh", null)}
+                >Обновить список</ui-button
+              >
+            </header>`}
         ${this.error ? html`<ui-notice tone="error" .message=${this.error}></ui-notice>` : null}
 
         ${this._adding
@@ -156,10 +154,9 @@ export class PnaSourceList extends LitElement {
             >`}
 
         ${visible.length === 0
-          ? html`<ui-notice
-              tone="empty"
-              message="Источников пока нет. Нажмите «Обновить список» — агент подберёт их по описанию темы."
-            ></ui-notice>`
+          ? this.busy
+            ? null
+            : html`<ui-notice tone="empty" message="Источников пока нет."></ui-notice>`
           : visible.map(
               (source) => html`<pna-source-item .source=${source}></pna-source-item>`,
             )}

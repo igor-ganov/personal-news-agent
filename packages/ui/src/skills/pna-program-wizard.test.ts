@@ -113,3 +113,34 @@ describe("pna-program-wizard time budget from the goal", () => {
     expect(slider(element, "Длительность")?.value).toBe("6");
   });
 });
+
+describe("pna-program-wizard — a plan in as few decisions as possible", () => {
+  const chip = (element: PnaProgramWizard, name: string) =>
+    [...element.shadowRoot!.querySelectorAll<HTMLElement>("ui-chip")].find((c) => (c.textContent ?? "").includes(name));
+
+  it("asks the pace as one of three presets, and folds the exact sliders away", async () => {
+    const element = await mount(new PnaProgramWizard());
+    expect(query<HTMLDetailsElement>(element, "details")?.open).toBe(false);
+    expect(query<HTMLDetailsElement>(element, "details")?.querySelector("input[type=range]")).not.toBeNull();
+
+    chip(element, "Интенсив")?.click();
+    await element.updateComplete;
+    const requests = capture<ProgramRequest>(element, "program-request");
+    query<HTMLElement>(element, ".submit ui-button")?.click();
+    expect(requests[0]?.schedule.intensity).toMatchObject({ sessionsPerWeek: 5, minutesPerSession: 60 });
+  });
+
+  it("says how many sessions and on which day the plan ends", async () => {
+    const element = new PnaProgramWizard();
+    element.startDay = "2026-08-22";
+    await mount(element);
+    const text = element.shadowRoot!.textContent ?? "";
+    expect(text).toContain("12 занятий, до 19 сент. 2026 г.");
+    expect(text).not.toContain("г..");
+  });
+
+  it("does not ask how to continue while there is nothing to continue from", async () => {
+    const element = await mount(new PnaProgramWizard());
+    expect(element.shadowRoot!.textContent).not.toContain("Как продолжаем");
+  });
+});

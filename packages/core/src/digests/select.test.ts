@@ -12,6 +12,7 @@ import {
   latestDigest,
   pruneDigests,
   stalePeriods,
+  dayNews,
 } from "./select.js";
 
 const topic1 = "topic_1" as TopicId;
@@ -120,5 +121,27 @@ describe("pruneDigests", () => {
 
   it("keeps everything when the cap is generous", () => {
     expect(Object.keys(pruneDigests(digests, 10))).toHaveLength(4);
+  });
+});
+
+describe("dayNews — what a topic has for today, as the topic list shows it", () => {
+  const now = instantOf("2026-08-22T12:00:00Z");
+
+  it("is ready with the item count when the day digest is still fresh", () => {
+    const fresh = d("fresh", { period: "day", generatedAt: instantOf("2026-08-22T09:00:00Z") });
+    expect(dayNews({ [fresh.id]: fresh }, topic1, now)).toEqual({
+      kind: "ready",
+      items: digestItemCount(fresh),
+    });
+  });
+
+  it("is missing when the day digest has gone stale", () => {
+    const old = d("old", { period: "day", generatedAt: instantOf("2026-08-22T05:00:00Z") });
+    expect(dayNews({ [old.id]: old }, topic1, now)).toEqual({ kind: "missing" });
+  });
+
+  it("is missing when the topic has no day digest, whatever other periods hold", () => {
+    const week = d("week", { period: "week", generatedAt: instantOf("2026-08-22T11:00:00Z") });
+    expect(dayNews({ [week.id]: week }, topic1, now)).toEqual({ kind: "missing" });
   });
 });

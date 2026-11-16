@@ -12,6 +12,10 @@ export * from "./diagrams/renderer.js";
 export * from "./routing/route.js";
 
 export * from "./components/ui-button.js";
+export * from "./components/ui-icon-button.js";
+export * from "./components/ui-check.js";
+export * from "./components/ui-stepper.js";
+export * from "./sketch/icons.js";
 export * from "./components/ui-pencil-button.js";
 export * from "./sketch/path.js";
 export * from "./sketch/seed.js";
@@ -29,6 +33,7 @@ export * from "./shell/pna-app-bar.js";
 export * from "./shell/pna-tabs.js";
 
 export * from "./topics/pna-topic-tree.js";
+export * from "./topics/pna-today.js";
 export * from "./topics/pna-topic-form.js";
 export * from "./topics/pna-focus-editor.js";
 

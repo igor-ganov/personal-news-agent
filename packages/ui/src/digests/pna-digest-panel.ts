@@ -85,9 +85,9 @@ export class PnaDigestPanel extends LitElement {
 
       .history-label {
         margin: 0 0 6px;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: 600;
         color: var(--pna-text-dim);
       }
 
@@ -199,7 +199,7 @@ export class PnaDigestPanel extends LitElement {
             ? null
             : html`<ui-notice
                 tone="empty"
-                message="Дайджеста за этот период ещё нет. Нажмите кнопку выше — агент соберёт его по источникам темы."
+                message="Пока пусто. Соберётся на сервере — приложение можно закрыть."
               ></ui-notice>`}
       </div>
     `;

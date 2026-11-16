@@ -45,17 +45,52 @@ describe("pna-suggestions", () => {
     expect(picked).toEqual([idea(2)]);
   });
 
-  it("offers ten more under the list", async () => {
-    const element = await view({ ideas: [idea(1)] });
+  it("shows three ideas at a time, so the choice stays small", async () => {
+    const element = await view({ ideas: [1, 2, 3, 4, 5, 6, 7].map(idea) });
+    expect(queryAll(element, "li")).toHaveLength(3);
+
+    const asked = capture<null>(element, "suggestions-more");
+    await click(element, buttonNamed(element, "Ещё 3"));
+    expect(queryAll(element, "li")).toHaveLength(6);
+    expect(asked).toHaveLength(0);
+  });
+
+  it("asks for more only once the ones it has are all shown", async () => {
+    const element = await view({ ideas: [1, 2, 3].map(idea) });
     const asked = capture<null>(element, "suggestions-more");
 
-    await click(element, buttonNamed(element, "Ещё 10"));
+    await click(element, buttonNamed(element, "Ещё 3"));
 
     expect(asked).toHaveLength(1);
+    element.ideas = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(idea);
+    await element.updateComplete;
+    expect(queryAll(element, "li")).toHaveLength(6);
+  });
+
+  it("reads as a list of lines, not a stack of boxes", async () => {
+    const element = await view({ ideas: [idea(1)] });
+    const css = [PnaSuggestions.styles].flat(3).map(String).join(" ");
+    expect(css).not.toMatch(/border:\s*1px solid var\(--pna-border\)/);
+    expect(query(element, "li button")).not.toBeNull();
+  });
+
+  it("folds to the picked idea once one is chosen, and opens again on request", async () => {
+    const element = await view({ ideas: [1, 2, 3].map(idea), picked: "Идея 2" });
+    expect(queryAll(element, "li")).toHaveLength(1);
+    expect(text(element)).toContain("Идея 2");
+
+    await click(element, buttonNamed(element, "Другие варианты"));
+    expect(queryAll(element, "li")).toHaveLength(3);
+  });
+
+  it("never prints a running count of ideas", async () => {
+    const element = await view({ ideas: [1, 2, 3].map(idea) });
+    expect(text(element)).not.toMatch(/Вариантов:/);
   });
 
   it("marks the idea the card was filled from", async () => {
     const element = await view({ ideas: [idea(1), idea(2)], picked: "Идея 2" });
+    await click(element, buttonNamed(element, "Другие варианты"));
 
     expect(queryAll(element, "li button")[1]?.getAttribute("aria-pressed")).toBe("true");
     expect(queryAll(element, "li button")[0]?.getAttribute("aria-pressed")).toBe("false");
@@ -65,7 +100,7 @@ describe("pna-suggestions", () => {
     const element = await view({ ideas: [idea(1)], busy: true });
 
     expect(query(element, "[role=status]")?.textContent).toContain("Подбираю варианты");
-    expect(buttonNamed(element, "Ещё 10")?.hasAttribute("disabled")).toBe(true);
+    expect(buttonNamed(element, "Ещё 3")?.hasAttribute("disabled")).toBe(true);
   });
 
   it("shows why ideas did not come", async () => {

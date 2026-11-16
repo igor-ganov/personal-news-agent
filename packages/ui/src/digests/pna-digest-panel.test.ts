@@ -126,3 +126,13 @@ describe("pna-digest-panel — история", () => {
     expect(status?.since).toBe("2026-08-22T10:00:00Z");
   });
 });
+
+describe("pna-digest-panel with nothing gathered yet", () => {
+  it("says it in a few words and that the work does not need the app open", async () => {
+    const element = new PnaDigestPanel();
+    element.digests = {};
+    await mount(element);
+    const empty = element.shadowRoot!.querySelector("ui-notice")!;
+    expect(empty.getAttribute("message")).toBe("Пока пусто. Соберётся на сервере — приложение можно закрыть.");
+  });
+});

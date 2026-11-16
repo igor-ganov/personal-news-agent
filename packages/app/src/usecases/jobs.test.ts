@@ -10,6 +10,11 @@ import {
   type Result,
 } from "@pna/core";
 import { createMockProvider, type SuggestInput } from "@pna/agent";
+import { createKnownKeysStore, createSessionStore } from "@pna/auth";
+import { fixedClock } from "@pna/core";
+import { createOwnedRepository, memoryStore } from "@pna/storage";
+import { fakeAuthClient } from "../testing/fake-auth.js";
+import { createAccountService } from "./account.js";
 import { describe, expect, it, vi } from "vitest";
 import { harness, T0 } from "../testing/harness.js";
 import { appError, type AppError } from "../errors.js";
@@ -187,6 +192,37 @@ describe("runGeneration with a server", () => {
     await dismissJob(ctx, key);
     expect(server.dismissed).toEqual(["job_9"]);
     expect(ctx.deps.tasks.get(key).status).toBe("idle");
+  });
+});
+
+describe("syncJobs before anyone has signed in", () => {
+  // The poller starts with the app, and on a first launch that is before the
+  // passkey prompt is answered: the server can only say "who are you?", which
+  // the screen used to show as an expired session.
+  it("leaves the server alone and reports nothing wrong", async () => {
+    const asked: string[] = [];
+    const gateway: JobsGateway = {
+      ...fakeJobs().gateway,
+      async list() {
+        asked.push("list");
+        return err(appError("unauthorized", "Сессия истекла — войдите снова"));
+      },
+    };
+    const h = harness({ jobs: gateway });
+    const kv = memoryStore();
+    const signedOut = createAccountService({
+      client: fakeAuthClient().client,
+      sessions: createSessionStore(kv, fixedClock(T0)),
+      keys: createKnownKeysStore(kv),
+      repository: createOwnedRepository(kv),
+      store: h.ctx.store,
+    });
+    const ctx = { ...h.ctx, deps: { ...h.ctx.deps, account: signedOut } };
+
+    const result = await syncJobs(ctx);
+
+    expect(result).toEqual(ok(0));
+    expect(asked).toEqual([]);
   });
 });
 

@@ -17,10 +17,10 @@ export const PERIOD_LABEL: Record<DigestPeriod, string> = {
 };
 
 export const PERIOD_QUESTION: Record<DigestPeriod, string> = {
-  day: "Что нового за день",
-  week: "Что нового за неделю",
-  month: "Что нового за месяц",
-  year: "Что нового за год",
+  day: "Собрать новости за день",
+  week: "Собрать новости за неделю",
+  month: "Собрать новости за месяц",
+  year: "Собрать новости за год",
 };
 
 export const STATUS_LABEL: Record<SourceStatus, string> = {
@@ -131,3 +131,5 @@ export const formatElapsed = (ms: number): string => {
 
 /** The same span as an ISO 8601 duration, for `<time datetime>`. */
 export const isoDuration = (ms: number): string => `PT${Math.max(0, Math.floor(ms / 1000))}S`;
+export const formatNews = (n: number): string => formatCount(n, ["новость", "новости", "новостей"]);
+export const formatSubtopics = (n: number): string => formatCount(n, ["подтема", "подтемы", "подтем"]);

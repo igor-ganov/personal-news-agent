@@ -29,8 +29,8 @@ afterEach(unmountAll);
 describe("pna-source-list", () => {
   it("counts only the active sources in the header", async () => {
     const element = await render([source("a"), source("b", "muted"), source("c", "blacklisted")]);
-    expect(text(element)).toContain("1 источник активно");
-    expect(text(element)).toContain("1 приглушено");
+    expect(text(element)).toContain("1 источник в работе");
+    expect(text(element)).toContain("приглушено: 1");
   });
 
   it("keeps blacklisted sources out of the working list", async () => {
@@ -109,6 +109,17 @@ describe("pna-source-list", () => {
     const status = query<HTMLElement & { label: string; since: string }>(element, "ui-task-status");
     expect(status?.label).toBe("Ищу источники");
     expect(status?.since).toBe("2026-08-22T10:00:00Z");
+  });
+
+  it("while searching shows only the search, never an empty list or a zero count beside it", async () => {
+    const element = new PnaSourceList();
+    element.sources = [];
+    element.busy = true;
+    await mount(element);
+
+    expect(text(element)).not.toContain("Источников пока нет");
+    expect(text(element)).not.toContain("в работе");
+    expect(text(element)).not.toContain("Обновить список");
   });
 
   it("shows a provider error", async () => {

@@ -61,7 +61,7 @@ describe("Russian plurals", () => {
 describe("labels", () => {
   it("names every digest period", () => {
     expect(Object.keys(PERIOD_LABEL)).toEqual(["day", "week", "month", "year"]);
-    expect(PERIOD_QUESTION.week).toBe("Что нового за неделю");
+    expect(PERIOD_QUESTION.week).toBe("Собрать новости за неделю");
   });
 
   it("rounds percentages", () => {

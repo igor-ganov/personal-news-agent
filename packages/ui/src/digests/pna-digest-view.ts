@@ -38,9 +38,9 @@ export class PnaDigestView extends LitElement {
 
       h4 {
         margin: var(--pna-gap-lg) 0 var(--pna-gap-sm);
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: 600;
         color: var(--pna-text-dim);
       }
 

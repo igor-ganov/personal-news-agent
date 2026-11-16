@@ -74,3 +74,13 @@ export const pruneDigests = (digests: DigestMap, keepPerPeriod: number): DigestM
     Object.entries(digests).filter(([id]) => kept.has(id as DigestId)),
   ) as DigestMap;
 };
+
+/** What a topic has for today: a fresh day digest and how much is in it, or nothing yet. */
+export type DayNews = { readonly kind: "ready"; readonly items: number } | { readonly kind: "missing" };
+
+export const dayNews = (digests: DigestMap, topicId: TopicId, now: Instant): DayNews => {
+  const latest = latestDigest(digests, topicId, "day");
+  return latest === undefined || isDigestStale(latest, now)
+    ? { kind: "missing" }
+    : { kind: "ready", items: digestItemCount(latest) };
+};

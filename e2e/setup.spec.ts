@@ -36,6 +36,8 @@ test("a typed name brings proposed settings, and what the user wrote stays their
   await expect(page.getByRole("status").filter({ hasText: LABELS.setupReady })).toBeVisible();
   const brief = textbox(page, LABELS.briefField);
   await expect(brief).toHaveValue(/«Rust async»/);
+  // Level, sections and exclusions are folded; the proposal fills them all the same.
+  await page.getByText(LABELS.tuning).click();
   await expect(textbox(page, LABELS.focusField).first()).toHaveValue("Rust async: релизы");
   await expect(page.getByRole("button", { name: LABELS.advancedLevel })).toHaveAttribute("aria-pressed", "true");
 
@@ -56,6 +58,7 @@ test("a typed name brings proposed settings, and what the user wrote stays their
   await goal.fill("Write drivers without unsafe");
   await goal.blur();
   await expect(page.getByRole("status").filter({ hasText: "6 недель" })).toBeVisible();
+  await page.getByText(LABELS.paceDetails, { exact: true }).click();
   await expect(page.getByRole("slider", { name: LABELS.weeksSlider })).toHaveValue("6");
   await expect(page.getByRole("slider", { name: LABELS.sessionsSlider })).toHaveValue("2");
   await expect(page.getByRole("slider", { name: LABELS.minutesSlider })).toHaveValue("60");

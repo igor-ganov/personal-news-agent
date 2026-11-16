@@ -73,6 +73,8 @@ test("the app opens on a passkey prompt, and a leftover key never leads to a sec
   await topicButton(page, doomed).click();
   await page.getByRole("tab", { name: LABELS.aboutTab }).click();
   await page.getByRole("button", { name: LABELS.deleteTopic }).click();
+  // Deleting takes everything under the topic, so the app asks once more.
+  await page.getByRole("button", { name: LABELS.confirmDelete }).click();
   await expect(topicButton(page, doomed)).toHaveCount(0);
   await page.goto("/#/account");
   const synced = page.waitForResponse((r) => r.url().endsWith("/state") && r.request().method() === "PUT" && r.ok());

@@ -91,9 +91,12 @@ export class PnaSignInScreen extends LitElement {
     return html`
       <main>
         <h1>Skill Grower</h1>
-        <p role="status">${asking ? "Подтвердите вход ключом доступа…" : "Вход по ключу доступа"}</p>
+        <p role="status">${asking ? "Подтвердите вход ключом…" : "Вход без пароля"}</p>
         ${this._error ? html`<ui-notice tone="error" .message=${this._error}></ui-notice>` : null}
-        <ui-button ?disabled=${asking} @click=${() => void this.attempt(() => this.service.enter())}
+        <ui-button
+          variant="primary"
+          ?disabled=${asking}
+          @click=${() => void this.attempt(() => this.service.enter())}
           >Войти по ключу</ui-button
         >
         <ui-button
@@ -103,7 +106,7 @@ export class PnaSignInScreen extends LitElement {
           >Новый аккаунт</ui-button
         >
         <ui-button
-          variant="ghost"
+          variant="secondary"
           ?disabled=${asking}
           @click=${() => void this.attempt(() => this.service.enterFromAnotherDevice())}
           >Ключ с другого устройства</ui-button

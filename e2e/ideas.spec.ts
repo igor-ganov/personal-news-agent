@@ -45,9 +45,10 @@ test("a subtopic and a skill start from picked ideas, and a queued search says w
   await page.getByRole("button", { name: LABELS.addSubtopic }).click();
   await page.getByRole("button", { name: LABELS.askIdeas }).click();
   const subtopics = page.getByRole("list", { name: LABELS.subtopicIdeas }).getByRole("listitem");
-  await expect(subtopics).toHaveCount(10);
+  // Three at a time: a small choice, with more a tap away.
+  await expect(subtopics).toHaveCount(3);
   await page.getByRole("button", { name: LABELS.moreIdeas }).click();
-  await expect(subtopics).toHaveCount(20);
+  await expect(subtopics).toHaveCount(6);
 
   const idea = `Подтема 3: ${parent}`;
   await ideaButton(page, LABELS.subtopicIdeas, idea).click();

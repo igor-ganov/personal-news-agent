@@ -4,7 +4,9 @@ import { emit } from "../events.js";
 import { PERIOD_LABEL } from "../format/labels.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
+import "../components/ui-check.js";
 import "../components/ui-chip.js";
+import "../components/ui-stepper.js";
 import "../components/ui-field.js";
 import "../components/ui-notice.js";
 
@@ -25,18 +27,26 @@ export class PnaSettingsView extends LitElement {
     settings: { type: Object },
     apiKeyMask: { type: String },
     providerId: { type: String },
+    keyNote: { type: String },
+    keyMissing: { type: Boolean },
     _key: { state: true },
   };
 
   declare settings: Settings;
   declare apiKeyMask: string;
   declare providerId: string;
+  /** One line on where generation runs with the current key, or "" when nothing is known. */
+  declare keyNote: string;
+  /** No key anywhere: the app runs on demonstration content until one is saved. */
+  declare keyMissing: boolean;
   private declare _key: string;
 
   constructor() {
     super();
     this.apiKeyMask = "не задан";
     this.providerId = "anthropic";
+    this.keyNote = "";
+    this.keyMissing = false;
     this._key = "";
   }
 
@@ -53,15 +63,15 @@ export class PnaSettingsView extends LitElement {
 
       h3 {
         margin: 0 0 var(--pna-gap-sm);
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: 600;
         color: var(--pna-text-dim);
       }
 
       .chips {
         display: flex;
-        gap: 6px;
+        gap: var(--pna-gap-sm);
         flex-wrap: wrap;
       }
 
@@ -86,8 +96,14 @@ export class PnaSettingsView extends LitElement {
       }
 
       .hint {
+        margin: 4px 0 var(--pna-gap-sm);
         font-size: 0.85rem;
         color: var(--pna-text-dim);
+      }
+
+      .missing {
+        margin: 0 0 var(--pna-gap-sm);
+        color: var(--pna-danger);
       }
     `,
   ];
@@ -112,12 +128,11 @@ export class PnaSettingsView extends LitElement {
     return html`
       <div class="settings">
         <section>
-          <h3>Доступ к модели</h3>
-          <p class="hint">
-            Ключ хранится только на устройстве, в отдельном защищённом слоте, и не попадает
-            в резервную копию данных приложения.
-          </p>
-          <div class="row"><span>Текущий ключ</span><span class="mask">${this.apiKeyMask}</span></div>
+          <h3>Ключ API</h3>
+          ${this.keyMissing
+            ? html`<p class="missing">Ключа нет — материалы пока демонстрационные.</p>`
+            : html`<div class="row"><span>Сейчас</span><span class="mask">${this.apiKeyMask}</span></div>`}
+          ${this.keyNote ? html`<p class="hint">${this.keyNote}</p>` : null}
           <ui-field
             label="Новый ключ API"
             input-type="password"
@@ -134,10 +149,13 @@ export class PnaSettingsView extends LitElement {
               }}
               >Сохранить</ui-button
             >
-            <ui-button variant="danger" @click=${() => emit(this, "api-key-clear", null)}
-              >Удалить</ui-button
-            >
+            ${this.keyMissing
+              ? null
+              : html`<ui-button variant="danger" @click=${() => emit(this, "api-key-clear", null)}
+                  >Удалить ключ</ui-button
+                >`}
           </div>
+          <p class="hint">Хранится только на этом устройстве, в защищённом слоте.</p>
         </section>
 
         <section>
@@ -158,34 +176,23 @@ export class PnaSettingsView extends LitElement {
 
         <section>
           <h3>Источники</h3>
+          <ui-check
+            label="Пополнять список автоматически"
+            .checked=${settings.autoRefreshSources}
+            @check-change=${(e: CustomEvent<boolean>) => this.patch({ autoRefreshSources: e.detail })}
+          ></ui-check>
           <div class="row">
-            <span>Пополнять список автоматически</span>
-            <input
-              type="checkbox"
-              aria-label="Пополнять список автоматически"
-              .checked=${settings.autoRefreshSources}
-              @change=${(e: Event) =>
-                this.patch({ autoRefreshSources: (e.target as HTMLInputElement).checked })}
-            />
+            <span>Обновлять раз в</span>
+            <ui-stepper
+              label="Дней между обновлениями"
+              unit="дн."
+              .min=${1}
+              .max=${60}
+              .value=${settings.sourceRefreshDays}
+              @stepper-change=${(e: CustomEvent<number>) => this.patch({ sourceRefreshDays: e.detail })}
+            ></ui-stepper>
           </div>
-          <p class="hint">
-            Источники в блеклисте не возвращаются никогда, а добавленные вручную не переписываются.
-          </p>
-          <div class="row">
-            <span>Обновлять не чаще чем раз в</span>
-            <span>
-              <input
-                type="number"
-                min="1"
-                max="60"
-                aria-label="Дней между обновлениями"
-                .value=${String(settings.sourceRefreshDays)}
-                @change=${(e: Event) =>
-                  this.patch({ sourceRefreshDays: Number((e.target as HTMLInputElement).value) })}
-              />
-              дн.
-            </span>
-          </div>
+          <p class="hint">Блеклист и добавленные вручную источники не трогаются.</p>
         </section>
 
         <section>
@@ -195,6 +202,7 @@ export class PnaSettingsView extends LitElement {
               (period) => html`
                 <ui-chip
                   selectable
+                  multiple
                   ?selected=${settings.autoDigestPeriods.includes(period)}
                   @click=${() => this.togglePeriod(period)}
                   >${PERIOD_LABEL[period]}</ui-chip

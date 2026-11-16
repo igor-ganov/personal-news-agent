@@ -2,6 +2,7 @@ import type { CapacityReport, PlanEdit, ProgramDraft } from "@pna/core";
 import { css, html, LitElement } from "lit";
 import { emit } from "../events.js";
 import { formatMinutes, formatSessions } from "../format/labels.js";
+import { drawnIcon, iconCss } from "../sketch/icons.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-field.js";
@@ -36,6 +37,7 @@ export class PnaPlanEditor extends LitElement {
 
   static override styles = [
     baseCss,
+    iconCss,
     css`
       :host {
         display: block;
@@ -168,20 +170,20 @@ export class PnaPlanEditor extends LitElement {
                     })}
                 ></ui-field>
                 <button
-                  class="icon"
+                  class="tool"
                   aria-label="Поднять модуль"
                   ?disabled=${moduleIndex === 0}
                   @click=${() =>
                     this.edit({ type: "move-module", from: moduleIndex, to: moduleIndex - 1 })}
                 >
-                  ↑
+                  ${drawnIcon("up")}
                 </button>
                 <button
-                  class="icon"
+                  class="tool"
                   aria-label="Удалить модуль"
                   @click=${() => this.edit({ type: "remove-module", module: moduleIndex })}
                 >
-                  ✕
+                  ${drawnIcon("cross")}
                 </button>
               </div>
 
@@ -194,7 +196,7 @@ export class PnaPlanEditor extends LitElement {
                     </div>
                     <span class="minutes">${lesson.estimatedMinutes} мин</span>
                     <button
-                      class="icon"
+                      class="tool"
                       aria-label="Поднять занятие"
                       ?disabled=${lessonIndex === 0}
                       @click=${() =>
@@ -204,10 +206,10 @@ export class PnaPlanEditor extends LitElement {
                           to: { module: moduleIndex, lesson: lessonIndex - 1 },
                         })}
                     >
-                      ↑
+                  ${drawnIcon("up")}
                     </button>
                     <button
-                      class="icon"
+                      class="tool"
                       aria-label="Удалить занятие"
                       @click=${() =>
                         this.edit({
@@ -216,7 +218,7 @@ export class PnaPlanEditor extends LitElement {
                           lesson: lessonIndex,
                         })}
                     >
-                      ✕
+                  ${drawnIcon("cross")}
                     </button>
                   </div>
                 `,

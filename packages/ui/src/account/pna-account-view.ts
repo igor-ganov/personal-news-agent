@@ -89,9 +89,9 @@ export class PnaAccountView extends LitElement {
 
       h3 {
         margin: 0 0 var(--pna-gap-sm);
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: 600;
         color: var(--pna-text-dim);
       }
 
@@ -243,7 +243,7 @@ export class PnaAccountView extends LitElement {
       </p>
       <ul class="hint">
         <li>
-          на устройстве, где вход уже работает, откройте «Аккаунт» → «Добавить устройство»
+          на устройстве, где вход уже работает, откройте «Аккаунт», нажмите «Добавить устройство»
           и отсканируйте отсюда QR-код;
         </li>
         <li>

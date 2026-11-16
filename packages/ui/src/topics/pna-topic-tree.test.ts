@@ -72,11 +72,6 @@ describe("pna-topic-tree", () => {
     expect(queryAll(element, ".title")).toHaveLength(4);
   });
 
-  it("hides the twisty for a leaf", async () => {
-    const element = await render([node("music", "Музыка")]);
-    expect(query(element, ".twisty")?.className).toContain("hidden");
-  });
-
   it("marks the selected topic", async () => {
     const element = new PnaTopicTree();
     element.nodes = tree;
@@ -88,8 +83,30 @@ describe("pna-topic-tree", () => {
     expect(current[0]!.textContent).toContain("Музыка");
   });
 
-  it("shows how many sub-topics a branch has", async () => {
+  it("shows how many sub-topics a branch has, in the right case", async () => {
+    const element = await render([node("ai", "ИИ", [node("a", "А"), node("b", "Б")])]);
+    expect(text(element)).toContain("2 подтемы");
+  });
+
+  it("says under each topic what today holds, not how it is configured", async () => {
+    const element = new PnaTopicTree();
+    element.nodes = tree;
+    element.today = { ai: { kind: "ready", items: 3 }, music: { kind: "missing" } };
+    await mount(element);
+
+    const lines = queryAll(element, ".meta").map((n) => (n.textContent ?? "").replace(/s+/g, " ").trim());
+    expect(lines[0]).toContain("За день: 3 новости");
+    expect(lines.at(-1)).toContain("За день ещё не собрано");
+    expect(text(element)).not.toContain("фокус");
+  });
+
+  it("draws the collapse mark instead of typing a symbol", async () => {
     const element = await render(tree);
-    expect(text(element)).toContain("1 подтем");
+    expect(queryAll(element, ".twisty")[0]!.querySelector("svg[data-icon]")).not.toBeNull();
+  });
+
+  it("offers no collapse control on a leaf, so titles line up", async () => {
+    const element = await render([node("music", "Музыка")]);
+    expect(query(element, ".twisty")).toBeNull();
   });
 });

@@ -50,11 +50,10 @@ export class UiTaskStatus extends LitElement {
         flex-wrap: wrap;
         align-items: center;
         gap: var(--pna-gap-sm);
-        padding: var(--pna-gap);
-        margin-bottom: var(--pna-gap-sm);
-        border: 1px solid var(--pna-border);
-        border-radius: var(--pna-radius-sm);
-        background: var(--pna-surface);
+        /* A note in the margin, not a card: a pencil rule down its left side. */
+        padding: var(--pna-gap-sm) 0 var(--pna-gap-sm) var(--pna-gap);
+        margin-bottom: var(--pna-gap);
+        border-left: 2px solid var(--pna-line);
       }
 
       .spinner {

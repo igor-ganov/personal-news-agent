@@ -1,5 +1,5 @@
-import { addTopic, type AppError } from "@pna/app";
-import { buildTree, type TopicId } from "@pna/core";
+import { addTopic, digestTaskKey, generateDigest, type AppError } from "@pna/app";
+import { buildTree, dayNews, type DayNews, type TopicId } from "@pna/core";
 import { routeHref, type TopicFormValue } from "@pna/ui";
 import { css, html } from "lit";
 import { ConnectedElement } from "../context.js";
@@ -41,11 +41,6 @@ export class PnaTopicsScreen extends ConnectedElement {
       padding: var(--pna-gap);
     }
 
-    .intro {
-      margin: 0 0 var(--pna-gap-lg);
-      color: var(--pna-text-dim);
-      font-size: 0.9rem;
-    }
   `;
 
   private save(value: TopicFormValue): void {
@@ -73,17 +68,51 @@ export class PnaTopicsScreen extends ConnectedElement {
     this.setupFor.reset();
   };
 
+  /** Today for every topic, as the list and the day summary show it. */
+  private today(): Readonly<Record<TopicId, DayNews>> {
+    const state = this.ctx.store.getState();
+    const now = this.ctx.deps.clock.now();
+    return Object.fromEntries(
+      Object.keys(state.topics).map((id) => [id, dayNews(state.digests, id as TopicId, now)]),
+    ) as Record<TopicId, DayNews>;
+  }
+
+  private gathering(): readonly TopicId[] {
+    return (Object.keys(this.ctx.store.getState().topics) as TopicId[]).filter((id) =>
+      this.isBusy(digestTaskKey(id, "day")),
+    );
+  }
+
+  /** Asks the server for the day of every topic that has none yet and is not already asked. */
+  private collectToday(): void {
+    const today = this.today();
+    const busy = new Set(this.gathering());
+    (Object.keys(today) as TopicId[])
+      .filter((id) => today[id]?.kind === "missing" && !busy.has(id))
+      .forEach((topicId) => void generateDigest(this.ctx, { topicId, period: "day" }));
+  }
+
   override render() {
     const state = this.ctx.store.getState();
     const tree = buildTree(state.topics);
+    const today = this.today();
+    const ready = Object.values(today).filter((news) => news.kind === "ready").length;
 
     return html`
-      <pna-app-bar heading="Мои темы">
+      <pna-app-bar
+        heading=${this._creating ? "Новая тема" : "Мои темы"}
+        ?canGoBack=${this._creating}
+        @go-back=${this.toggleCreating}
+      >
         ${this._creating
-          ? html`<ui-button slot="actions" size="sm" variant="ghost" @click=${this.toggleCreating}
-              >Закрыть</ui-button
-            >`
-          : html`<ui-pencil-button slot="actions" @click=${this.toggleCreating}>Новая</ui-pencil-button>`}
+          ? null
+          : html`<ui-pencil-button slot="actions" @click=${this.toggleCreating}>Новая</ui-pencil-button>
+              <ui-icon-button
+                slot="actions"
+                icon="gear"
+                label="Настройки"
+                @click=${() => navigate(routeHref({ name: "settings" }))}
+              ></ui-icon-button>`}
       </pna-app-bar>
 
       <main>
@@ -100,12 +129,17 @@ export class PnaTopicsScreen extends ConnectedElement {
               }}
             ></pna-topic-form>`
           : html`<div>
-              <p class="intro">
-                Тема — это то, за чем вы следите. Внутри у неё новости и программы обучения,
-                а подтемы наследуют её фокус.
-              </p>
+              ${tree.length > 0
+                ? html`<pna-today
+                    .total=${Object.keys(today).length}
+                    .ready=${ready}
+                    .running=${this.gathering().length}
+                    @today-collect=${() => this.collectToday()}
+                  ></pna-today>`
+                : null}
               <pna-topic-tree
                 .nodes=${tree}
+                .today=${today}
                 @topic-open=${(e: CustomEvent<TopicId>) =>
                   navigate(routeHref({ name: "topic", topicId: e.detail, tab: "news" }))}
                 @topic-create=${() => {

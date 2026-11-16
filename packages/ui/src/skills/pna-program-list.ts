@@ -62,11 +62,10 @@ export class PnaProgramList extends LitElement {
         display: block;
         width: 100%;
         text-align: left;
-        padding: var(--pna-gap);
-        margin-bottom: var(--pna-gap-sm);
-        border: 1px solid var(--pna-border);
-        border-radius: var(--pna-radius);
-        background: var(--pna-surface);
+        padding: var(--pna-gap) 2px;
+        border: none;
+        border-bottom: 1px solid var(--pna-line);
+        background: none;
         color: inherit;
         font: inherit;
         cursor: pointer;
@@ -136,7 +135,7 @@ export class PnaProgramList extends LitElement {
       ${this.programs.length === 0
         ? html`<ui-notice
             tone="empty"
-            message="Программ пока нет. Соберите первую: агент предложит план, а вы поправите его до запуска."
+            message="Программ пока нет."
           ></ui-notice>`
         : this.programs.map(
             ({ program, progress }) => html`

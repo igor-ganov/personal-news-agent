@@ -36,11 +36,10 @@ export class PnaFocusEditor extends LitElement {
         display: block;
       }
 
+      /* Sections follow one another down the sheet, parted by a pencil rule. */
       .area {
-        padding: var(--pna-gap-sm);
-        border: 1px solid var(--pna-border);
-        border-radius: var(--pna-radius-sm);
-        margin-bottom: var(--pna-gap-sm);
+        padding: var(--pna-gap-sm) 0 var(--pna-gap);
+        border-top: 1px solid var(--pna-line);
         display: flex;
         flex-direction: column;
         gap: var(--pna-gap-sm);
@@ -63,7 +62,8 @@ export class PnaFocusEditor extends LitElement {
       }
 
       .index {
-        font-size: 0.8rem;
+        font-style: italic;
+        font-weight: 600;
         color: var(--pna-text-dim);
       }
     `,
@@ -86,9 +86,9 @@ export class PnaFocusEditor extends LitElement {
           <div class="area">
             <div class="head">
               <span class="index">Раздел ${index + 1}</span>
-              <ui-button size="sm" variant="danger" @click=${() =>
+              <ui-button size="sm" variant="ghost" @click=${() =>
                 this.change(this.rows.filter((_, i) => i !== index))}
-                >Удалить</ui-button
+                >Убрать раздел</ui-button
               >
             </div>
             <ui-field

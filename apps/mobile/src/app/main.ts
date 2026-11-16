@@ -138,10 +138,12 @@ export const start = async (mount: HTMLElement): Promise<void> => {
  */
 const loadAccount = async (context: AppContext, app: HTMLElement): Promise<void> => {
   if (!context.deps.account?.current()) return;
-  app.setAttribute("warning", "Загружаем данные аккаунта…");
+  app.setAttribute("status", "Загружаем данные аккаунта…");
   const outcome = await syncNow(context);
-  if (outcome === "synced" || outcome === "offline") app.removeAttribute("warning");
-  else app.setAttribute("warning", `Данные аккаунта не загрузились: ${outcome}`);
+  app.removeAttribute("status");
+  if (outcome !== "synced" && outcome !== "offline") {
+    app.setAttribute("warning", `Данные аккаунта не загрузились: ${outcome}`);
+  }
   // A key saved on this phone before signing in has to reach the server, or
   // every job there fails for want of one.
   void shareApiKey(context);
@@ -166,7 +168,6 @@ const authWiring = (kv: ReturnType<typeof platformStore>): AuthWiring | null => 
   };
 };
 
-/** Design tokens live on :root so every shadow root can read them. */
 /**
  * Tokens go in as a constructed stylesheet, not a <style> element: the packaged
  * app's CSP carries a nonce (added by Tauri at build), which makes the WebView

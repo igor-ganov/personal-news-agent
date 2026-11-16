@@ -39,18 +39,18 @@ export const tokensCss = `
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* A night notebook: blue-black paper, chalk-white ink, a yellow gel pen. */
-    --pna-bg: #1a2029;
-    --pna-surface: #1a2029;
-    --pna-surface-2: #242b36;
-    --pna-border: #3d4654;
-    --pna-line: rgba(241, 238, 230, 0.22);
-    --pna-text: #ece8df;
-    --pna-text-dim: #98a0ab;
-    --pna-accent: #f3c76e;
-    --pna-accent-text: #1a2029;
-    --pna-danger: #ef7b6c;
-    --pna-ok: #7cc49a;
+    /* The same sheet at night: warm graphite paper, the same ink turned pale. */
+    --pna-bg: #1c1a17;
+    --pna-surface: #1c1a17;
+    --pna-surface-2: #26231f;
+    --pna-border: #4a453d;
+    --pna-line: rgba(236, 230, 218, 0.2);
+    --pna-text: #ece6da;
+    --pna-text-dim: #a59d90;
+    --pna-accent: #ece6da;
+    --pna-accent-text: #1c1a17;
+    --pna-danger: #ef8a7a;
+    --pna-ok: #8fc49c;
     --pna-warn: #e0b45a;
   }
 }
@@ -114,6 +114,59 @@ export const baseCss = css`
 
   .small {
     font-size: 0.85rem;
+  }
+
+  /* A section label: a quiet heading in the book face, never spaced capitals. */
+  .label {
+    margin: 0 0 var(--pna-gap-sm);
+    font-size: 0.95rem;
+    font-style: italic;
+    font-weight: 600;
+    color: var(--pna-text-dim);
+  }
+
+  /* A slider is a pencil line with a round handle big enough for a thumb. */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: var(--pna-tap);
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px;
+    border-radius: 1px;
+    background: var(--pna-text-dim);
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 2px;
+    background: var(--pna-text-dim);
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    margin-top: -13px;
+    border: 2px solid var(--pna-text);
+    border-radius: 50%;
+    background: var(--pna-bg);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--pna-text);
+    border-radius: 50%;
+    background: var(--pna-bg);
+  }
+
+  input[type="range"]:focus-visible {
+    outline: 2px solid var(--pna-text);
+    outline-offset: 2px;
   }
 
   .truncate {

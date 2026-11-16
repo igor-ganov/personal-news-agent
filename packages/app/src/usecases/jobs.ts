@@ -552,6 +552,9 @@ const failLostJobs = (
 export const syncJobs = async (ctx: AppContext): Promise<Result<number, AppError>> => {
   const gateway = ctx.deps.jobs;
   if (!gateway) return ok(0);
+  // Signed out (a first launch before the passkey is answered): there are no
+  // jobs of anyone's to look at, and asking would only earn "who are you?".
+  if (ctx.deps.account && !ctx.deps.account.current()) return ok(0);
 
   // Taken before asking: a job submitted while the list is in flight is not
   // in the answer, and that must not read as the server having lost it.

@@ -1,7 +1,7 @@
 import { clearApiKey, generatorCredentials, patchSettings, saveApiKey } from "@pna/app";
 import type { Settings } from "@pna/core";
 import { maskSecret } from "@pna/storage";
-import { routeHref } from "@pna/ui";
+import { drawnIcon, iconCss, routeHref } from "@pna/ui";
 import { css, html } from "lit";
 import { ConnectedElement } from "../context.js";
 import { goBack, navigate } from "../router.js";
@@ -24,7 +24,7 @@ export class PnaSettingsScreen extends ConnectedElement {
     this._server = "";
   }
 
-  static override styles = css`
+  static override styles = [iconCss, css`
     :host {
       display: block;
     }
@@ -34,7 +34,30 @@ export class PnaSettingsScreen extends ConnectedElement {
     }
 
     .account {
-      margin-top: var(--pna-gap-lg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: var(--pna-tap);
+      margin-bottom: var(--pna-gap-lg);
+      padding: 8px 2px;
+      border: none;
+      border-bottom: 1px solid var(--pna-line);
+      background: none;
+      color: inherit;
+      font: inherit;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .account:focus-visible {
+      outline: 2px solid var(--pna-text);
+      outline-offset: 2px;
+    }
+
+    .account .icon {
+      color: var(--pna-text-dim);
     }
 
     .note {
@@ -42,7 +65,7 @@ export class PnaSettingsScreen extends ConnectedElement {
       font-size: 0.85rem;
       color: var(--pna-text-dim);
     }
-  `;
+  `];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -71,10 +94,10 @@ export class PnaSettingsScreen extends ConnectedElement {
       return;
     }
     this._server = credentials.value.ownKey
-      ? "Ключ передан на сервер — генерация идёт там и не прерывается, если закрыть приложение."
+      ? "Ключ есть и на сервере: генерация идёт, даже если закрыть приложение."
       : credentials.value.configured
         ? "Сервер генерирует своим ключом."
-        : "На сервере ключа нет: сохраните ключ ещё раз, войдя в аккаунт, иначе генерация пойдёт только на этом устройстве.";
+        : "На сервере ключа нет — сохраните ключ ещё раз, иначе генерация идёт только здесь.";
   }
 
   override render() {
@@ -85,21 +108,17 @@ export class PnaSettingsScreen extends ConnectedElement {
       <pna-app-bar heading="Настройки" canGoBack @go-back=${() => goBack()}></pna-app-bar>
 
       <main>
-        ${usingMock
-          ? html`<ui-notice
-              tone="info"
-              message="Ключ не задан — приложение работает на офлайн-заглушке: экраны и переходы живые, но материалы демонстрационные."
-            ></ui-notice>`
-          : null}
-
-        ${this._server
-          ? html`<ui-notice tone="info" message=${this._server}></ui-notice>`
-          : null}
+        <button class="account" @click=${() => navigate(routeHref({ name: "account" }))}>
+          <span>Аккаунт и синхронизация</span>
+          ${drawnIcon("next")}
+        </button>
 
         <pna-settings-view
           .settings=${settings}
           .apiKeyMask=${this._mask}
           .providerId=${settings.providerId}
+          ?keyMissing=${usingMock}
+          .keyNote=${usingMock ? "" : this._server}
           @settings-change=${(e: CustomEvent<Partial<Settings>>) =>
             patchSettings(this.ctx, e.detail)}
           @api-key-save=${async (e: CustomEvent<string>) => {
@@ -112,16 +131,9 @@ export class PnaSettingsScreen extends ConnectedElement {
           }}
         ></pna-settings-view>
 
-        <section class="account">
-          <ui-button @click=${() => navigate(routeHref({ name: "account" }))}
-            >Аккаунт и синхронизация</ui-button
-          >
-        </section>
-
         <p class="note">
-          Все данные — темы, дайджесты, лекции и результаты тестов — хранятся на устройстве.
-          Наружу уходят только запросы к выбранной модели, а в аккаунт — то, что вы решите
-          синхронизировать.
+          Темы, дайджесты и лекции хранятся на устройстве и в вашем аккаунте; наружу уходят
+          только запросы к модели.
         </p>
       </main>
     `;

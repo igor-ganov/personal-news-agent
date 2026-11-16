@@ -1,16 +1,21 @@
 import type { Suggestion } from "@pna/core";
 import { css, html, LitElement } from "lit";
 import { emit } from "../events.js";
+import { drawnIcon, iconCss } from "../sketch/icons.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-notice.js";
 
+/** How many ideas are on screen at once: few enough to choose between at a glance. */
+export const IDEAS_AT_ONCE = 3;
+
 /**
- * A list of ideas to start a card from.
+ * A short list of ideas to start a card from.
  *
- * It asks for ideas and reports the one picked; the parent fetches them and
- * fills its own card, which stays editable. Ideas are added ten at a time, so
- * the list only grows and a scrolled-to idea never moves.
+ * It shows three at a time and reveals three more on request, asking the parent
+ * for a fresh batch only when everything it holds is already on screen; the list
+ * only grows, so a read idea never moves. Once one is picked the list folds to
+ * that one line, and opens again if the user wants another.
  */
 export class PnaSuggestions extends LitElement {
   static override properties = {
@@ -19,6 +24,8 @@ export class PnaSuggestions extends LitElement {
     error: { type: String },
     picked: { type: String },
     label: { type: String },
+    _visible: { state: true },
+    _browsing: { state: true },
   };
 
   declare ideas: readonly Suggestion[];
@@ -28,6 +35,9 @@ export class PnaSuggestions extends LitElement {
   declare picked: string;
   /** What the ideas are for, read as the list's name. */
   declare label: string;
+  private declare _visible: number;
+  /** The user asked to see the others again after picking one. */
+  private declare _browsing: boolean;
 
   constructor() {
     super();
@@ -36,19 +46,19 @@ export class PnaSuggestions extends LitElement {
     this.error = "";
     this.picked = "";
     this.label = "Варианты";
+    this._visible = IDEAS_AT_ONCE;
+    this._browsing = false;
   }
 
   static override styles = [
     baseCss,
+    iconCss,
     css`
       :host {
         display: block;
       }
 
       ul {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
         margin: 0 0 var(--pna-gap-sm);
         padding: 0;
         list-style: none;
@@ -56,29 +66,31 @@ export class PnaSuggestions extends LitElement {
 
       li button {
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
+        align-items: center;
+        gap: var(--pna-gap-sm);
         width: 100%;
         min-height: var(--pna-tap);
-        padding: var(--pna-gap-sm);
-        border: 1px solid var(--pna-border);
-        border-radius: var(--pna-radius-sm);
-        background: var(--pna-surface);
+        padding: 8px 2px;
+        border: none;
+        border-bottom: 1px solid var(--pna-line);
+        background: none;
         color: inherit;
         font: inherit;
         text-align: left;
         cursor: pointer;
       }
 
-      li button[aria-pressed="true"] {
-        border-color: var(--pna-accent);
-        box-shadow: inset 3px 0 0 var(--pna-accent);
+      li button:focus-visible {
+        outline: 2px solid var(--pna-text);
+        outline-offset: -2px;
       }
 
-      li button:focus-visible {
-        outline: 2px solid var(--pna-accent);
-        outline-offset: 2px;
+      .text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+        min-width: 0;
       }
 
       .title {
@@ -90,54 +102,70 @@ export class PnaSuggestions extends LitElement {
         color: var(--pna-text-dim);
       }
 
+      .mark {
+        width: 22px;
+        flex: none;
+      }
+
       .status {
-        margin: 0 0 var(--pna-gap-sm);
+        margin: 0;
         font-size: 0.85rem;
         color: var(--pna-text-dim);
       }
 
-      ui-button {
-        width: 100%;
+      .status:empty {
+        display: none;
       }
     `,
   ];
 
+  private pick(idea: Suggestion): void {
+    this._browsing = false;
+    emit<Suggestion>(this, "suggestion-pick", idea);
+  }
+
+  /** Three more from what is held; a fresh batch is asked for once those run out. */
+  private more(): void {
+    if (this._visible >= this.ideas.length) emit(this, "suggestions-more", null);
+    this._visible = this.ideas.length === 0 ? IDEAS_AT_ONCE : this._visible + IDEAS_AT_ONCE;
+  }
+
   private renderIdea(idea: Suggestion) {
+    const picked = idea.title === this.picked;
     return html`<li>
-      <button
-        type="button"
-        aria-pressed=${idea.title === this.picked ? "true" : "false"}
-        @click=${() => emit<Suggestion>(this, "suggestion-pick", idea)}
-      >
-        <span class="title">${idea.title}</span>
-        ${idea.summary ? html`<span class="summary">${idea.summary}</span>` : null}
+      <button type="button" aria-pressed=${picked ? "true" : "false"} @click=${() => this.pick(idea)}>
+        ${picked ? html`<span class="mark" aria-hidden="true">${drawnIcon("tick")}</span>` : null}
+        <span class="text">
+          <span class="title">${idea.title}</span>
+          ${idea.summary ? html`<span class="summary">${idea.summary}</span>` : null}
+        </span>
       </button>
     </li>`;
   }
 
-  /** Announced on change: ideas coming, or how many there are now. */
-  private status(): string {
-    if (this.busy) return "Подбираю варианты…";
-    return this.ideas.length > 0 ? `Вариантов: ${this.ideas.length}` : "";
-  }
-
   override render() {
-    const more = this.ideas.length === 0 ? "Подобрать варианты" : "Ещё 10";
+    const folded = this.picked.length > 0 && !this._browsing;
+    const shown = folded
+      ? this.ideas.filter((idea) => idea.title === this.picked)
+      : this.ideas.slice(0, this._visible);
+
     return html`<div class="suggestions">
-      ${this.ideas.length > 0
+      ${shown.length > 0
         ? html`<ul aria-label=${this.label} aria-busy=${this.busy ? "true" : "false"}>
-            ${this.ideas.map((idea) => this.renderIdea(idea))}
+            ${shown.map((idea) => this.renderIdea(idea))}
           </ul>`
         : null}
-      <p class="status" role="status">${this.status()}</p>
+      <p class="status" role="status">${this.busy ? "Подбираю варианты…" : ""}</p>
       ${this.error ? html`<ui-notice tone="error" message=${this.error}></ui-notice>` : null}
-      <ui-button
-        variant="secondary"
-        ?disabled=${this.busy}
-        ?busy=${this.busy}
-        @click=${() => emit(this, "suggestions-more", null)}
-        >${more}</ui-button
-      >
+      ${folded
+        ? html`<ui-button variant="ghost" @click=${() => (this._browsing = true)}>Другие варианты</ui-button>`
+        : html`<ui-button
+            variant="secondary"
+            ?disabled=${this.busy}
+            ?busy=${this.busy}
+            @click=${() => this.more()}
+            >${this.ideas.length === 0 ? "Подобрать варианты" : `Ещё ${IDEAS_AT_ONCE}`}</ui-button
+          >`}
     </div>`;
   }
 }

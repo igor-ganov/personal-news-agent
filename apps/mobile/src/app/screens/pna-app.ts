@@ -1,6 +1,6 @@
 import { css, html, LitElement, type TemplateResult } from "lit";
-import { routeHref, type Route } from "@pna/ui";
-import { currentRoute, goBack, navigate, onRouteChange } from "../router.js";
+import type { Route } from "@pna/ui";
+import { currentRoute, goBack, onRouteChange } from "../router.js";
 import "./pna-account-screen.js";
 import "./pna-lesson-screen.js";
 import "./pna-program-screen.js";
@@ -10,22 +10,26 @@ import "./pna-topics-screen.js";
 import "@pna/ui";
 
 /**
- * The shell: turns the current route into a screen, and offers the one action
- * that has to be reachable from everywhere — settings.
+ * The shell: turns the current route into a screen, and says what the app as a
+ * whole is doing — a load in progress, or a failure that is not one screen's.
  */
 export class PnaApp extends LitElement {
   static override properties = {
     warning: { type: String },
+    status: { type: String },
     _route: { state: true },
   };
 
   declare warning: string;
+  /** Work in progress that is not a fault, such as loading the account. */
+  declare status: string;
   private declare _route: Route;
   private stopListening: (() => void) | null = null;
 
   constructor() {
     super();
     this.warning = "";
+    this.status = "";
     this._route = currentRoute();
   }
 
@@ -37,13 +41,6 @@ export class PnaApp extends LitElement {
 
     .warning {
       padding: var(--pna-gap-sm) var(--pna-gap);
-    }
-
-    .fab {
-      position: fixed;
-      right: var(--pna-gap);
-      bottom: calc(var(--pna-gap) + env(safe-area-inset-bottom));
-      z-index: 20;
     }
   `;
 
@@ -90,17 +87,12 @@ export class PnaApp extends LitElement {
               <ui-notice tone="error" .message=${this.warning}></ui-notice>
             </div>`
           : null}
+        ${this.status
+          ? html`<div class="warning">
+              <ui-notice tone="info" .message=${this.status}></ui-notice>
+            </div>`
+          : null}
         ${this.renderScreen()}
-        ${this._route.name === "settings" || this._route.name === "account"
-          ? null
-          : html`<div class="fab">
-              <ui-button
-                size="sm"
-                @click=${() => navigate(routeHref({ name: "settings" }))}
-                aria-label="Настройки"
-                >⚙</ui-button
-              >
-            </div>`}
       </div>
     `;
   }

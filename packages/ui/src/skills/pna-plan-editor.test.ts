@@ -34,14 +34,14 @@ describe("pna-plan-editor", () => {
   it("emits a remove-module edit", async () => {
     const element = await render();
     const events = capture<PlanEdit>(element, "plan-edit");
-    await click(element, queryAll(element, ".module")[0]!.querySelectorAll(".icon")[1] ?? null);
+    await click(element, queryAll(element, ".module")[0]!.querySelectorAll(".tool")[1] ?? null);
     expect(events).toEqual([{ type: "remove-module", module: 0 }]);
   });
 
   it("emits a move-lesson edit that the domain can apply", async () => {
     const element = await render();
     const events = capture<PlanEdit>(element, "plan-edit");
-    await click(element, queryAll(element, ".lesson")[1]!.querySelectorAll(".icon")[0] ?? null);
+    await click(element, queryAll(element, ".lesson")[1]!.querySelectorAll(".tool")[0] ?? null);
 
     expect(events).toEqual([
       { type: "move-lesson", from: { module: 0, lesson: 1 }, to: { module: 0, lesson: 0 } },
@@ -54,7 +54,7 @@ describe("pna-plan-editor", () => {
 
   it("disables moving the first item up", async () => {
     const element = await render();
-    const firstUp = queryAll(element, ".lesson")[0]!.querySelectorAll(".icon")[0] as HTMLButtonElement;
+    const firstUp = queryAll(element, ".lesson")[0]!.querySelectorAll(".tool")[0] as HTMLButtonElement;
     expect(firstUp.disabled).toBe(true);
   });
 

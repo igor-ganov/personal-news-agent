@@ -68,12 +68,15 @@ export class UiField extends LitElement {
         background: transparent;
         color: var(--pna-text);
         font: inherit;
-        resize: vertical;
+        resize: none;
       }
 
       /* A ruled sheet: each line of text sits on a pencil rule. */
+      /* The sheet grows with what is written: no grip to drag, no inner scroll. */
       textarea {
         --rule: 1.6em;
+        field-sizing: content;
+        min-height: calc(var(--rule) * 3);
         line-height: var(--rule);
         padding-top: 0;
         border-bottom: none;

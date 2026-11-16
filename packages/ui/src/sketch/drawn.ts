@@ -25,6 +25,12 @@ export const drawnOval = (seed: number) =>
     <path d=${sketchOval({ seed, wobble: 1.6 })(80, 32)}></path>
   </svg>`;
 
+/** A short pen line under a word, as a hand underlines what can be tapped. */
+export const drawnUnder = (seed: number) =>
+  html`<svg class="under" aria-hidden="true" viewBox="0 0 120 6" preserveAspectRatio="none">
+    <path d=${sketchLine({ seed, wobble: 1.2 })(1, 3, 119, 3)}></path>
+  </svg>`;
+
 /** A rule drawn along the bottom of its parent. */
 export const drawnRule = (seed: number) =>
   html`<svg class="rule" aria-hidden="true" viewBox="0 0 354 6" preserveAspectRatio="none">
@@ -61,8 +67,20 @@ export const drawnCss = css`
     color: var(--pna-line);
   }
 
+  .under {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -5px;
+    width: 100%;
+    height: 6px;
+    overflow: visible;
+    pointer-events: none;
+  }
+
   .frame path,
   .oval path,
+  .under path,
   .rule path {
     fill: none;
     stroke: currentColor;

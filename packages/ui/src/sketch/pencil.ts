@@ -52,7 +52,7 @@ export const pencilSvg = html`
       <path d="M30 6.6 L188 6.6" stroke="rgba(255, 246, 205, 0.6)" stroke-width="0.5"></path>
       <path d="M30 13.3 L188 13.3" stroke="rgba(110, 70, 0, 0.35)" stroke-width="0.5"></path>
       <rect x="40" y="2" width="146" height="1.2" fill="rgba(255, 255, 255, 0.5)"></rect>
-      <text x="112" y="12.3" class="stamp">SKILL GROWER · HB</text>
+      <text x="62" y="12.3" class="stamp">SKILL GROWER · HB</text>
     </g>
     <rect x="187" y="-0.3" width="21" height="20.6" fill="url(#pcFerrule)"></rect>
     <rect x="194" y="-0.3" width="5" height="20.6" fill="rgba(40, 45, 50, 0.13)"></rect>

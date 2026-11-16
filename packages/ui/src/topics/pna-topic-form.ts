@@ -1,9 +1,10 @@
 import { TOPIC_LEVELS, type Setup, type Suggestion, type Topic, type TopicLevel } from "@pna/core";
 import { css, html, LitElement, type PropertyValues } from "lit";
 import { emit } from "../events.js";
-import { LEVEL_LABEL } from "../format/labels.js";
+import { formatCount, LEVEL_LABEL } from "../format/labels.js";
 import { fillUntouched, touch } from "../setup/fill.js";
 import { renderSetupStatus } from "../setup/setup-status.js";
+import { drawnIcon, iconCss } from "../sketch/icons.js";
 import { baseCss } from "../styles/tokens.js";
 import { emptyFocusRow, type FocusRow } from "./pna-focus-editor.js";
 import "../components/ui-button.js";
@@ -28,8 +29,19 @@ type SetupField = (typeof SETUP_FIELDS)[number];
 const focusRows = (titles: readonly string[]): readonly FocusRow[] =>
   titles.length > 0 ? titles.map((title) => ({ title, detail: "", weight: 3 })) : [emptyFocusRow()];
 
+/** What the folded settings hold, so the user sees what was chosen without opening them. */
+const tuningSummary = (value: TopicFormValue): string =>
+  [
+    `уровень ${LEVEL_LABEL[value.level]}`,
+    formatCount(value.focusAreas.filter((row) => row.title.trim().length > 0).length, ["раздел", "раздела", "разделов"]),
+  ].join(", ");
+
 /**
  * Creates or edits a topic, including its focus areas and anti-interests.
+ *
+ * Only the name and what interests the user are open at first; level, focus
+ * sections and exclusions are folded under "Тонкая настройка", with a line
+ * saying what they currently hold — the proposal fills them anyway.
  *
  * A new card asks for settings once its name is committed (`setup-request`),
  * and fills whatever the user has not written themselves from the `setup`
@@ -87,6 +99,7 @@ export class PnaTopicForm extends LitElement {
 
   static override styles = [
     baseCss,
+    iconCss,
     css`
       :host {
         display: block;
@@ -116,13 +129,62 @@ export class PnaTopicForm extends LitElement {
         flex-wrap: wrap;
       }
 
-      .actions {
-        display: flex;
-        gap: var(--pna-gap-sm);
+      details {
+        border-top: 1px solid var(--pna-line);
       }
 
-      .actions ui-button {
+      summary {
+        display: flex;
+        align-items: center;
+        gap: var(--pna-gap-sm);
+        min-height: var(--pna-tap);
+        cursor: pointer;
+        list-style: none;
+      }
+
+      summary::-webkit-details-marker {
+        display: none;
+      }
+
+      summary:focus-visible {
+        outline: 2px solid var(--pna-text);
+        outline-offset: 2px;
+      }
+
+      summary .what {
+        font-weight: 600;
+      }
+
+      summary .holds {
         flex: 1;
+        min-width: 0;
+        font-size: 0.85rem;
+        color: var(--pna-text-dim);
+      }
+
+      details[open] summary .icon {
+        transform: rotate(90deg);
+      }
+
+      .tuning {
+        display: flex;
+        flex-direction: column;
+        gap: var(--pna-gap);
+        padding-bottom: var(--pna-gap);
+      }
+
+      /* The way to finish stays under the thumb however long the card grows. */
+      .actions {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--pna-gap-sm);
+        padding: var(--pna-gap-sm) 0 calc(var(--pna-gap-sm) + env(safe-area-inset-bottom));
+        background: var(--pna-bg);
+        border-top: 1px solid var(--pna-line);
       }
 
       .parent {
@@ -201,7 +263,7 @@ export class PnaTopicForm extends LitElement {
 
   private renderIdeas() {
     return html`<fieldset>
-      <legend>Идеи подтем — выберите, чтобы заполнить карточку</legend>
+      <legend>Можно начать с готовой идеи</legend>
       <pna-suggestions
         label="Идеи подтем"
         .ideas=${this.ideas}
@@ -245,15 +307,21 @@ export class PnaTopicForm extends LitElement {
 
         <ui-field
           label="Что интересно в этой теме"
-          hint="Чем подробнее, тем точнее будут дайджесты и лекции"
           multiline
-          rows="4"
+          rows="3"
           .value=${this._value.brief}
           @field-input=${(e: CustomEvent<string>) => this.edit("brief", e.detail)}
         ></ui-field>
 
+        <details>
+          <summary>
+            ${drawnIcon("closed")}
+            <span class="what">Тонкая настройка</span>
+            <span class="holds">${tuningSummary(this._value)}</span>
+          </summary>
+          <div class="tuning">
         <fieldset>
-          <legend>Уровень — от него зависит глубина материала</legend>
+          <legend>Уровень</legend>
           <div class="levels">
             ${TOPIC_LEVELS.map(
               (level) => html`
@@ -279,19 +347,20 @@ export class PnaTopicForm extends LitElement {
 
         <ui-field
           label="Что не интересно"
-          hint="По одному пункту в строке — это никогда не попадёт в материалы"
+          hint="По пункту в строке"
           multiline
+          rows="2"
           .value=${this._value.excludes.join("\n")}
           @field-input=${(e: CustomEvent<string>) =>
             this.edit("excludes", e.detail.split("\n"))}
         ></ui-field>
+          </div>
+        </details>
 
         ${this.error ? html`<p class="error">${this.error}</p>` : null}
 
         <div class="actions">
-          <ui-button type="button" @click=${() => emit(this, "topic-cancel", null)}
-            >Отмена</ui-button
-          >
+          <ui-button variant="ghost" @click=${() => emit(this, "topic-cancel", null)}>Отмена</ui-button>
           <ui-button
             variant="primary"
             @click=${() => emit<TopicFormValue>(this, "topic-save", this._value)}

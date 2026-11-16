@@ -1,20 +1,28 @@
 import { css, html, LitElement } from "lit";
 import { drawnCss, drawnOval, nextSeed } from "../sketch/drawn.js";
+import { drawnIcon, iconCss } from "../sketch/icons.js";
 import { baseCss } from "../styles/tokens.js";
 
 export type ChipTone = "neutral" | "accent" | "ok" | "warn" | "danger";
 
-/** A small status or tag pill. Also usable as a toggle when `selectable` is set. */
+/**
+ * A small status word. With `selectable` it becomes a toggle: one choice of
+ * several is circled, as a pen circles an answer; with `multiple` as well,
+ * each chosen word gets a tick instead, so "any of these" never looks like
+ * "one of these".
+ */
 export class UiChip extends LitElement {
   static override properties = {
     tone: { type: String },
     selectable: { type: Boolean },
     selected: { type: Boolean, reflect: true },
+    multiple: { type: Boolean },
   };
 
   declare tone: ChipTone;
   declare selectable: boolean;
   declare selected: boolean;
+  declare multiple: boolean;
 
   private readonly seed = nextSeed();
 
@@ -23,11 +31,13 @@ export class UiChip extends LitElement {
     this.tone = "neutral";
     this.selectable = false;
     this.selected = false;
+    this.multiple = false;
   }
 
   static override styles = [
     baseCss,
     drawnCss,
+    iconCss,
     css`
       :host {
         display: inline-flex;
@@ -49,7 +59,7 @@ export class UiChip extends LitElement {
 
       button.chip {
         min-height: var(--pna-tap);
-        padding: 0 10px;
+        padding: 0 14px;
         font: inherit;
         font-size: 0.95rem;
         cursor: pointer;
@@ -80,10 +90,26 @@ export class UiChip extends LitElement {
         font-weight: 600;
       }
 
+      /* The loop stays inside the chip, so two circled neighbours never touch. */
       .oval {
-        inset: 3px -4px;
-        width: calc(100% + 8px);
-        height: calc(100% - 6px);
+        inset: 4px 2px;
+        width: calc(100% - 4px);
+        height: calc(100% - 8px);
+      }
+
+      .tick {
+        display: inline-grid;
+        width: 18px;
+        height: 18px;
+      }
+
+      .tick .icon {
+        width: 18px;
+        height: 18px;
+      }
+
+      button.multi {
+        padding-inline: 6px 12px;
       }
     `,
   ];
@@ -91,12 +117,15 @@ export class UiChip extends LitElement {
   override render() {
     return this.selectable
       ? html`<button
-          class="chip ${this.tone}"
+          class="chip ${this.tone} ${this.multiple ? "multi" : ""}"
           part="chip"
           aria-pressed=${this.selected ? "true" : "false"}
         >
+          ${this.multiple
+            ? html`<span class="tick" aria-hidden="true">${this.selected ? drawnIcon("tick") : null}</span>`
+            : null}
           <slot></slot>
-          ${this.selected ? drawnOval(this.seed) : null}
+          ${this.selected && !this.multiple ? drawnOval(this.seed) : null}
         </button>`
       : html`<span class="chip ${this.tone}" part="chip"><slot></slot></span>`;
   }

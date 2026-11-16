@@ -42,6 +42,8 @@ import {
   type UserSourceDraft,
 } from "@pna/core";
 import {
+  drawnIcon,
+  iconCss,
   routeHref,
   type ProgramRequest,
   type ProgramTaskView,
@@ -57,7 +59,7 @@ import "@pna/ui";
 
 const TABS = [
   { id: "news", label: "Новости" },
-  { id: "skills", label: "Скилы" },
+  { id: "skills", label: "Навыки" },
   { id: "sources", label: "Источники" },
   { id: "about", label: "О теме" },
 ];
@@ -107,6 +109,7 @@ export class PnaTopicScreen extends ConnectedElement {
     _planError: { state: true },
     _editing: { state: true },
     _formError: { state: true },
+    _confirmingDelete: { state: true },
   };
 
   declare topicId: TopicId;
@@ -121,6 +124,8 @@ export class PnaTopicScreen extends ConnectedElement {
   /** Settings proposed for the name typed on the open card: a subtopic, or a skill goal. */
   private declare _setup: Readonly<Record<SetupKind, SetupView>>;
   private declare _addingSubtopic: boolean;
+  /** Deleting a topic takes everything under it, so it asks once more inline. */
+  private declare _confirmingDelete: boolean;
   private readonly setupFor: Readonly<Record<SetupKind, SetupAsker>> = {
     topic: setupAsker(this.ctx, (view) => this.showSetup("topic", view)),
     skill: setupAsker(this.ctx, (view) => this.showSetup("skill", view)),
@@ -138,9 +143,10 @@ export class PnaTopicScreen extends ConnectedElement {
     this._ideas = { subtopic: NO_IDEAS, skill: NO_IDEAS };
     this._setup = { topic: NO_SETUP, skill: NO_SETUP };
     this._addingSubtopic = false;
+    this._confirmingDelete = false;
   }
 
-  static override styles = css`
+  static override styles = [iconCss, css`
     :host {
       display: block;
     }
@@ -155,10 +161,14 @@ export class PnaTopicScreen extends ConnectedElement {
 
     h3 {
       margin: 0 0 var(--pna-gap-sm);
-      font-size: 0.85rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      font-size: 0.95rem;
+      font-style: italic;
+      font-weight: 600;
       color: var(--pna-text-dim);
+    }
+
+    .brief {
+      margin: 0 0 var(--pna-gap-sm);
     }
 
     .subtopic {
@@ -167,11 +177,10 @@ export class PnaTopicScreen extends ConnectedElement {
       justify-content: space-between;
       gap: var(--pna-gap-sm);
       min-height: var(--pna-tap);
-      padding: var(--pna-gap-sm);
-      margin-bottom: 6px;
-      border: 1px solid var(--pna-border);
-      border-radius: var(--pna-radius-sm);
-      background: var(--pna-surface);
+      padding: 8px 2px;
+      border: none;
+      border-bottom: 1px solid var(--pna-line);
+      background: none;
       color: inherit;
       font: inherit;
       width: 100%;
@@ -179,10 +188,31 @@ export class PnaTopicScreen extends ConnectedElement {
       cursor: pointer;
     }
 
-    .danger {
-      margin-top: var(--pna-gap-lg);
+    .subtopic .icon {
+      color: var(--pna-text-dim);
     }
-  `;
+
+    .add {
+      margin-top: var(--pna-gap-sm);
+    }
+
+    /* The way out sits last and small: nothing about it should invite a tap. */
+    .danger {
+      margin-top: calc(var(--pna-gap-lg) * 2);
+      padding-top: var(--pna-gap);
+      border-top: 1px solid var(--pna-line);
+    }
+
+    .danger p {
+      margin: 0 0 var(--pna-gap-sm);
+    }
+
+    .danger .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--pna-gap-sm);
+    }
+  `];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -440,7 +470,7 @@ export class PnaTopicScreen extends ConnectedElement {
           ></pna-topic-form>`
         : html`<div class="section">
             <h3>Что интересно</h3>
-            <p>${topic.brief || "Описание не заполнено"}</p>
+            <p class="brief">${topic.brief || "Описание не заполнено"}</p>
             <ui-button size="sm" @click=${() => {
               this._editing = true;
             }}
@@ -457,13 +487,14 @@ export class PnaTopicScreen extends ConnectedElement {
               @click=${() => navigate(routeHref({ name: "topic", topicId: child.id, tab: "news" }))}
             >
               <span>${child.title}</span>
-              <span class="dim">›</span>
+              ${drawnIcon("next")}
             </button>
           `,
         )}
         ${this._addingSubtopic
           ? this.renderSubtopicForm(topic.title)
           : html`<ui-pencil-button
+              class="add"
               @click=${() => {
                 this._formError = "";
                 this.setupFor.topic.reset();
@@ -474,14 +505,33 @@ export class PnaTopicScreen extends ConnectedElement {
       </div>
 
       <div class="danger">
-        <ui-button
-          variant="danger"
-          @click=${() => {
-            deleteTopic(this.ctx, this.topicId);
-            navigate("#/");
-          }}
-          >Удалить тему со всем содержимым</ui-button
-        >
+        ${this._confirmingDelete
+          ? html`<p>Удалить «${topic.title}» вместе с подтемами, новостями и программами?</p>
+              <div class="row">
+                <ui-button
+                  variant="danger"
+                  @click=${() => {
+                    deleteTopic(this.ctx, this.topicId);
+                    navigate("#/");
+                  }}
+                  >Да, удалить</ui-button
+                >
+                <ui-button
+                  variant="ghost"
+                  @click=${() => {
+                    this._confirmingDelete = false;
+                  }}
+                  >Оставить</ui-button
+                >
+              </div>`
+          : html`<ui-button
+              variant="ghost"
+              size="sm"
+              @click=${() => {
+                this._confirmingDelete = true;
+              }}
+              >Удалить тему со всем содержимым</ui-button
+            >`}
       </div>
     </div>`;
   }

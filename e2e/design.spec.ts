@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { LABELS, SEEDED_TOPICS } from "./locators.js";
 
+const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? "18787"}`;
+
 /** A browser authenticator that creates and answers keys on its own, like a phone's keystore. */
 const withAuthenticator = async (page: Page): Promise<void> => {
   const cdp = await page.context().newCDPSession(page);
@@ -27,6 +29,18 @@ test("a topic reads as ink on paper: book type, hand-drawn tab mark, a real penc
   await expect(
     page.getByRole("button", { name: LABELS.newTopic, exact: true }).locator("svg[data-object='pencil']"),
   ).toBeVisible();
+
+  // Settings is a drawn icon in the header with a name a screen reader can say,
+  // not a typed symbol floating over the list.
+  await expect(page.getByRole("button", { name: LABELS.settings }).locator("svg[data-icon='gear']")).toBeVisible();
+
+  // The day starts with one tap: gather today's news for every topic at once.
+  await page.getByRole("button", { name: LABELS.collectToday }).click();
+  await expect(page.getByRole("button", { name: new RegExp(`^${LABELS.gathering}`) })).toBeVisible();
+  const tick = await page.request.get(`${API}/__scheduled?cron=*+*+*+*+*`);
+  expect(tick.ok()).toBe(true);
+  await expect(page.getByRole("button", { name: new RegExp(`^${SEEDED_TOPICS[0]}.*За день:`) })).toBeVisible();
+
   await page.getByRole("button", { name: new RegExp(`^${SEEDED_TOPICS[0]}`) }).click();
 
   // Buttons are boxes drawn by hand; the chosen period is circled, not filled.

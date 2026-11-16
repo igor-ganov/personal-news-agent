@@ -1,6 +1,8 @@
-import type { TopicId, TopicNode } from "@pna/core";
+import type { DayNews, TopicId, TopicNode } from "@pna/core";
 import { css, html, LitElement, type TemplateResult } from "lit";
 import { emit } from "../events.js";
+import { formatNews, formatSubtopics } from "../format/labels.js";
+import { drawnIcon, iconCss } from "../sketch/icons.js";
 import { baseCss } from "../styles/tokens.js";
 import "../components/ui-button.js";
 import "../components/ui-pencil-button.js";
@@ -16,22 +18,27 @@ export class PnaTopicTree extends LitElement {
   static override properties = {
     nodes: { type: Array },
     selected: { type: String },
+    today: { type: Object },
     _collapsed: { state: true },
   };
 
   declare nodes: readonly TopicNode[];
   declare selected: string;
+  /** What each topic holds for today; a topic missing here shows no news line. */
+  declare today: Readonly<Partial<Record<string, DayNews>>>;
   private declare _collapsed: ReadonlySet<string>;
 
   constructor() {
     super();
     this.nodes = [];
     this.selected = "";
+    this.today = {};
     this._collapsed = new Set();
   }
 
   static override styles = [
     baseCss,
+    iconCss,
     css`
       :host {
         display: block;
@@ -57,6 +64,7 @@ export class PnaTopicTree extends LitElement {
         display: flex;
         align-items: center;
         gap: 4px;
+        border-bottom: 1px solid var(--pna-line);
       }
 
       .open {
@@ -69,7 +77,6 @@ export class PnaTopicTree extends LitElement {
         min-height: var(--pna-tap);
         padding: 8px 2px 9px;
         border: none;
-        border-bottom: 1px solid var(--pna-line);
         background: none;
         color: inherit;
         font: inherit;
@@ -92,17 +99,21 @@ export class PnaTopicTree extends LitElement {
       }
 
       .twisty {
-        width: 28px;
-        min-height: 28px;
+        display: grid;
+        place-items: center;
+        flex: none;
+        width: var(--pna-tap);
+        min-height: var(--pna-tap);
         border: none;
         background: none;
         color: var(--pna-text-dim);
-        font: inherit;
         cursor: pointer;
       }
 
-      .twisty.hidden {
-        visibility: hidden;
+      .twisty:focus-visible,
+      .open:focus-visible {
+        outline: 2px solid var(--pna-text);
+        outline-offset: -2px;
       }
     `,
   ];
@@ -117,33 +128,33 @@ export class PnaTopicTree extends LitElement {
     const id = node.topic.id;
     const hasChildren = node.children.length > 0;
     const collapsed = this._collapsed.has(id);
-    const focus = node.topic.focusAreas.length;
+    const news = this.today[id];
+    const meta = [
+      news?.kind === "ready" ? `За день: ${formatNews(news.items)}` : news ? "За день ещё не собрано" : "",
+      hasChildren ? formatSubtopics(node.children.length) : "",
+    ].filter((part) => part.length > 0);
 
     return html`
       <li>
         <div class="row">
-          <button
-            class="twisty ${hasChildren ? "" : "hidden"}"
-            aria-label=${collapsed ? "Развернуть" : "Свернуть"}
-            aria-expanded=${collapsed ? "false" : "true"}
-            @click=${() => this.toggle(id)}
-          >
-            ${collapsed ? "▸" : "▾"}
-          </button>
           <button
             class="open"
             aria-current=${this.selected === id ? "true" : "false"}
             @click=${() => emit<TopicId>(this, "topic-open", id)}
           >
             <span class="title">${node.topic.title}</span>
-            ${focus > 0 || hasChildren
-              ? html`<span class="meta">
-                  ${hasChildren ? `${node.children.length} подтем` : ""}
-                  ${hasChildren && focus > 0 ? " · " : ""}
-                  ${focus > 0 ? `${focus} фокусов` : ""}
-                </span>`
-              : null}
+            ${meta.length > 0 ? html`<span class="meta">${meta.join(" · ")}</span>` : null}
           </button>
+          ${hasChildren
+            ? html`<button
+                class="twisty"
+                aria-label=${collapsed ? "Развернуть" : "Свернуть"}
+                aria-expanded=${collapsed ? "false" : "true"}
+                @click=${() => this.toggle(id)}
+              >
+                ${drawnIcon(collapsed ? "closed" : "open")}
+              </button>`
+            : null}
         </div>
         ${hasChildren && !collapsed
           ? html`<ul>
